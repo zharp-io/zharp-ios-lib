@@ -61,4 +61,26 @@ final class ErrorFormattingTests: XCTestCase {
         XCTAssertEqual(line, "3   MyApp                            0x0000000100001234 0x100000000 + 4660")
         XCTAssertNotNil(pattern.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)))
     }
+
+    func testCapturedErrorsListTheImagesTheirStackRunsThrough() {
+        struct PaymentError: Error {}
+        let app = BinaryImage(loadAddress: 0x1_0000_0000, uuid: "UUID-1", path: "/var/containers/MyApp.app/MyApp", arch: "arm64")
+        let uikit = BinaryImage(loadAddress: 0x1_9000_0000, uuid: "UUID-2", path: "/System/UIKitCore", arch: "arm64e")
+        let other = BinaryImage(loadAddress: 0x1_a000_0000, uuid: "UUID-3", path: "/usr/lib/libother.dylib", arch: "arm64e")
+        let symbols = [
+            "0   MyApp                               0x0000000100001234 MyApp + 4660",
+            "1   UIKitCore                           0x0000000190000040 UIKitCore + 64",
+        ]
+        let error = ErrorFormatting.describe(PaymentError(), callStack: symbols,
+                                             addresses: [0x1_0000_1234, 0x1_9000_0040], images: [other, uikit, app])
+        XCTAssertEqual(error.images, [app, uikit])
+        let lines = error.stacktrace.components(separatedBy: "\n")
+        XCTAssertEqual(Array(lines[1...2]), symbols)
+        XCTAssertEqual(lines[3], "")
+        XCTAssertEqual(lines[4], "Binary Images:")
+        XCTAssertEqual(Array(lines[5...]), [CrashFormat.imageLine(app), CrashFormat.imageLine(uikit)])
+
+        // Without addresses: just the frames, as before.
+        XCTAssertFalse(ErrorFormatting.describe(PaymentError(), callStack: symbols).stacktrace.contains("Binary Images:"))
+    }
 }

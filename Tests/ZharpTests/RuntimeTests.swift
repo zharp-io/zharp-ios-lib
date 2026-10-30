@@ -100,6 +100,17 @@ final class RuntimeTests: XCTestCase {
                              "exception.stacktrace", "zharp.handled", "true", "orderId", "o-1"])
     }
 
+    func testCapturedErrorsCarryTheirBinaryImages() throws {
+        enum CheckoutError: Error { case cardDeclined }
+        let runtime = try makeRuntime()
+        runtime.captureError(CheckoutError.cardDeclined, attributes: [:], callStack: Thread.callStackSymbols,
+                             addresses: Thread.callStackReturnAddresses.map { $0.uint64Value })
+        flush(runtime)
+
+        let all = try batches(.logs).reduce(Data(), +)
+        assertContains(all, ["Binary Images:", "zharp.binary_images", "loadAddress", "uuid", "arch"])
+    }
+
     func testSpansCarryContextAndScreens() throws {
         let runtime = try makeRuntime()
         runtime.screenDidAppear("Checkout")

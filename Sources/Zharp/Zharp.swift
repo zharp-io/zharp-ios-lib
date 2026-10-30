@@ -63,7 +63,8 @@ public enum Zharp {
     /// do { try checkout() } catch { Zharp.captureError(error, ["orderId": order.id]) }
     /// ```
     public static func captureError(_ error: Error, _ attributes: [String: Any] = [:]) {
-        ZharpRuntime.shared?.captureError(error, attributes: attributes, callStack: Thread.callStackSymbols)
+        ZharpRuntime.shared?.captureError(error, attributes: attributes, callStack: Thread.callStackSymbols,
+                                          addresses: Thread.callStackReturnAddresses.map { $0.uint64Value })
     }
 
     /// Records a screen view by name. SwiftUI: prefer `.zharpScreen("Name")`.

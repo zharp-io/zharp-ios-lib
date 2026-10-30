@@ -49,15 +49,17 @@ enum CrashReporter {
         guard let url = exceptionURL else { return }
         let type = exception.name.rawValue
         let message = exception.reason ?? ""
+        let addresses = exception.callStackReturnAddresses.map { $0.uint64Value }
         let stack = CrashFormat.exceptionStacktrace(
             type: type,
             message: message,
             symbols: exception.callStackSymbols,
-            addresses: exception.callStackReturnAddresses.map { $0.uint64Value },
+            addresses: addresses,
             images: images
         )
         let report = ExceptionCrashReport(type: type, message: message, stacktrace: stack,
-                                          time: Date().timeIntervalSince1970)
+                                          time: Date().timeIntervalSince1970,
+                                          images: CrashFormat.usedImages(addresses: addresses, images: images))
         guard let data = try? JSONEncoder().encode(report) else { return }
         try? data.write(to: url, options: .atomic)
     }
@@ -79,7 +81,8 @@ enum CrashReporter {
 
         if let data = try? Data(contentsOf: exceptionFile),
            let report = try? JSONDecoder().decode(ExceptionCrashReport.self, from: data) {
-            return PendingCrash(error: ErrorDescription(type: report.type, message: report.message, stacktrace: report.stacktrace),
+            return PendingCrash(error: ErrorDescription(type: report.type, message: report.message,
+                                                        stacktrace: report.stacktrace, images: report.images ?? []),
                                 time: Date(timeIntervalSince1970: report.time), files: files)
         }
         if let data = try? Data(contentsOf: signalFile),

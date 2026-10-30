@@ -3,9 +3,9 @@ import XCTest
 
 final class CrashFormatTests: XCTestCase {
     private let app = BinaryImage(loadAddress: 0x1_0000_0000, uuid: "11111111-2222-3333-4444-555555555555",
-                                  path: "/private/var/containers/Bundle/Application/X/My App.app/MyApp")
+                                  path: "/private/var/containers/Bundle/Application/X/My App.app/MyApp", arch: "arm64")
     private let platform = BinaryImage(loadAddress: 0x1_8000_0000, uuid: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
-                                       path: "/usr/lib/system/libsystem_platform.dylib")
+                                       path: "/usr/lib/system/libsystem_platform.dylib", arch: "arm64e")
     private let uikit = BinaryImage(loadAddress: 0x1_9000_0000, uuid: "",
                                     path: "/System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore")
 
@@ -23,7 +23,9 @@ final class CrashFormatTests: XCTestCase {
             let line = CrashFormat.imageLine(image)
             XCTAssertEqual(CrashFormat.parseImageLine(Substring(line)), image, line)
         }
-        XCTAssertEqual(CrashFormat.imageLine(uikit), "0x190000000 - /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore")
+        XCTAssertEqual(CrashFormat.imageLine(uikit), "0x190000000 - - /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore")
+        XCTAssertEqual(CrashFormat.imageLine(app),
+                       "0x100000000 11111111-2222-3333-4444-555555555555 arm64 /private/var/containers/Bundle/Application/X/My App.app/MyApp")
     }
 
     func testParseSignalReport() throws {
@@ -67,6 +69,15 @@ final class CrashFormatTests: XCTestCase {
         XCTAssertEqual(lines[4], "")
         XCTAssertEqual(lines[5], "Binary Images:")
         XCTAssertEqual(Array(lines[6...]), [CrashFormat.imageLine(app), CrashFormat.imageLine(uikit)])
+        // The same images, for zharp.binary_images.
+        XCTAssertEqual(error.images, [app, uikit])
+    }
+
+    func testBinaryImagesJSON() {
+        let json = CrashFormat.binaryImagesJSON([app, uikit])
+        XCTAssertEqual(json, #"[{"arch":"arm64","loadAddress":"0x100000000","name":"MyApp","uuid":"11111111-2222-3333-4444-555555555555"},"#
+            + #"{"arch":"","loadAddress":"0x190000000","name":"UIKitCore","uuid":""}]"#)
+        XCTAssertEqual(CrashFormat.binaryImagesJSON([]), "[]")
     }
 
     func testSwiftRuntimeErrorsAreBreakpoints() {
@@ -104,8 +115,12 @@ final class CrashFormatTests: XCTestCase {
     }
 
     func testExceptionReportRoundTripsThroughJSON() throws {
-        let report = ExceptionCrashReport(type: "T", message: "m", stacktrace: "T: m\n0 x", time: 1_700_000_000.5)
+        let report = ExceptionCrashReport(type: "T", message: "m", stacktrace: "T: m\n0 x", time: 1_700_000_000.5,
+                                          images: [app])
         let data = try JSONEncoder().encode(report)
         XCTAssertEqual(try JSONDecoder().decode(ExceptionCrashReport.self, from: data), report)
+        // A report written before images were kept still reads.
+        let old = Data(#"{"type":"T","message":"m","stacktrace":"T: m","time":1}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(ExceptionCrashReport.self, from: old).images)
     }
 }

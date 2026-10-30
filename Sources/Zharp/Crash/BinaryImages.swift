@@ -12,9 +12,27 @@ enum BinaryImages {
             guard let header = _dyld_get_image_header(index), let name = _dyld_get_image_name(index) else { continue }
             images.append(BinaryImage(loadAddress: UInt64(UInt(bitPattern: header)),
                                       uuid: uuid(of: header) ?? "",
-                                      path: String(cString: name)))
+                                      path: String(cString: name),
+                                      arch: arch(of: header)))
         }
         return images
+    }
+
+    /// The image's CPU architecture as dSYMs name it: system libraries are often `arm64e` while
+    /// the app is `arm64`.
+    static func arch(of header: UnsafePointer<mach_header>) -> String {
+        // <mach/machine.h> values, spelled out: the CPU_TYPE_* macros are built from casts and
+        // ORs that Swift doesn't always import.
+        let type = UInt32(bitPattern: header.pointee.cputype)
+        let subtype = UInt32(bitPattern: header.pointee.cpusubtype) & 0x00ff_ffff
+        switch type {
+        case 0x0100_000c: return subtype == 2 ? "arm64e" : "arm64"   // CPU_TYPE_ARM64 (CPU_SUBTYPE_ARM64E = 2)
+        case 0x0200_000c: return "arm64_32"                          // CPU_TYPE_ARM64_32
+        case 0x0100_0007: return "x86_64"                            // CPU_TYPE_X86_64
+        case 0x0000_000c: return "armv7"                             // CPU_TYPE_ARM
+        case 0x0000_0007: return "i386"                              // CPU_TYPE_X86
+        default: return ""
+        }
     }
 
     /// The LC_UUID of a Mach-O image in memory.

@@ -56,6 +56,8 @@ public enum Keys {
     public static let exceptionStacktrace = "exception.stacktrace"
     public static let handled = "zharp.handled"
     public static let errorKind = "zharp.error.kind"
+    /// JSON `[{name, uuid, loadAddress, arch}]` of the images a stack runs through.
+    public static let binaryImages = "zharp.binary_images"
 }
 
 /// Where telemetry goes.

@@ -5,6 +5,10 @@
 - First release: `Zharp` for iOS 15 and up, on OpenTelemetry Swift 2.6.0.
 - Crashes (uncaught exceptions and fatal signals) saved on the device and sent on the next
   launch with the crashed thread's stack and binary images; hangs of 2 s or more.
+- Readable stacks: crashes and caught errors list the binary images their frames run through
+  ("Binary Images:" with load address, UUID and arch) and send them as `zharp.binary_images`
+  JSON, so Zharp symbolicates them with the dSYMs uploaded by `zharp dsym upload` (README:
+  Xcode Run Script phase, or a curl fallback).
 - `captureError`, `Zharp.log.*`, `startSpan`, `setUser`/`clearUser`, `setTag`, `flush`.
 - Sessions (new after 30 minutes in the background or on `clearUser`), device context, an
   install-scoped device ID.

@@ -210,8 +210,9 @@ final class ZharpRuntime: @unchecked Sendable {
         if level.rawValue >= LogLevel.error.rawValue { flushErrorsSoon() }
     }
 
-    func captureError(_ error: Error, attributes: [String: Any], callStack: [String]) {
-        let description = ErrorFormatting.describe(error, callStack: callStack)
+    func captureError(_ error: Error, attributes: [String: Any], callStack: [String], addresses: [UInt64] = []) {
+        let description = ErrorFormatting.describe(error, callStack: callStack, addresses: addresses,
+                                                   images: addresses.isEmpty ? [] : BinaryImages.loaded())
         record(description, handled: true, kind: nil, attributes: AttributeMapping.map(attributes))
         // Mark the span the error happened in, if any; the error itself goes as a log record,
         // which sampling never drops.
@@ -227,6 +228,7 @@ final class ZharpRuntime: @unchecked Sendable {
         all[Keys.exceptionMessage] = .string(error.message)
         all[Keys.exceptionStacktrace] = .string(error.stacktrace)
         all[Keys.handled] = .string(handled ? "true" : "false")
+        if !error.images.isEmpty { all[Keys.binaryImages] = .string(CrashFormat.binaryImagesJSON(error.images)) }
         if let kind = kind { all[Keys.errorKind] = .string(kind) }
         log(level, ErrorFormatting.headline(type: error.type, message: error.message),
             attributes: all, timestamp: timestamp, context: previous)

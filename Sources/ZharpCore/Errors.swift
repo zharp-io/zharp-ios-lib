@@ -7,11 +7,15 @@ public struct ErrorDescription: Codable, Equatable {
     public var type: String
     public var message: String
     public var stacktrace: String
+    /// The images the stack's addresses are in (also listed under "Binary Images:" in
+    /// `stacktrace`); sent as `zharp.binary_images` so Zharp can symbolicate with the dSYMs.
+    public var images: [BinaryImage]
 
-    public init(type: String, message: String, stacktrace: String) {
+    public init(type: String, message: String, stacktrace: String, images: [BinaryImage] = []) {
         self.type = type
         self.message = message
         self.stacktrace = stacktrace
+        self.images = images
     }
 }
 
@@ -20,16 +24,22 @@ public enum ErrorFormatting {
     static let sdkFrameMarkers = ["5Zharp", "9ZharpCore"]
 
     /// A Swift or Cocoa error as captured by `Zharp.captureError`, with the stack of the place it
-    /// was captured (Swift errors carry no stack of their own).
-    public static func describe(_ error: Error, callStack: [String]) -> ErrorDescription {
+    /// was captured (Swift errors carry no stack of their own). Given the stack's return addresses
+    /// and the loaded images, the images it runs through are listed under "Binary Images:", so a
+    /// stripped release build's frames can be symbolicated with its dSYM.
+    public static func describe(_ error: Error, callStack: [String], addresses: [UInt64] = [],
+                                images: [BinaryImage] = []) -> ErrorDescription {
         let nsError = error as NSError
         let reflected = String(reflecting: type(of: error))
         let cocoa = isCocoaType(reflected)
         let typeName = cocoa ? "\(nsError.domain)(\(nsError.code))" : cleanTypeName(reflected)
         let text = message(for: error, cocoa: cocoa)
         let frames = renumber(dropSDKFrames(callStack))
-        return ErrorDescription(type: typeName, message: text,
-                                stacktrace: stacktrace(type: typeName, message: text, frames: frames))
+        let used = CrashFormat.usedImages(addresses: addresses, images: images)
+        var stack = stacktrace(type: typeName, message: text, frames: frames)
+        let section = CrashFormat.binaryImagesSection(used)
+        if !section.isEmpty { stack += "\n\n" + section }
+        return ErrorDescription(type: typeName, message: text, stacktrace: stack, images: used)
     }
 
     /// An Objective-C error class (NSError and its private subclasses) rather than a Swift type,
@@ -100,13 +110,17 @@ public enum ErrorFormatting {
 /// address with `atos` and the dSYM.
 public struct BinaryImage: Codable, Equatable {
     public var loadAddress: UInt64
+    /// The Mach-O LC_UUID, as `dwarfdump --uuid` prints it for the matching dSYM.
     public var uuid: String
     public var path: String
+    /// `arm64`, `arm64e`, `x86_64`… ("" when unknown).
+    public var arch: String
 
-    public init(loadAddress: UInt64, uuid: String, path: String) {
+    public init(loadAddress: UInt64, uuid: String, path: String, arch: String = "") {
         self.loadAddress = loadAddress
         self.uuid = uuid
         self.path = path
+        self.arch = arch
     }
 
     public var name: String {
@@ -141,12 +155,15 @@ public struct ExceptionCrashReport: Codable, Equatable {
     public var message: String
     public var stacktrace: String
     public var time: TimeInterval
+    /// The images in the stack's Binary Images section (absent in reports written before).
+    public var images: [BinaryImage]?
 
-    public init(type: String, message: String, stacktrace: String, time: TimeInterval) {
+    public init(type: String, message: String, stacktrace: String, time: TimeInterval, images: [BinaryImage]? = nil) {
         self.type = type
         self.message = message
         self.stacktrace = stacktrace
         self.time = time
+        self.images = images
     }
 }
 
@@ -158,16 +175,30 @@ public enum CrashFormat {
 
     // MARK: Image list
 
-    /// One line of the image list: "0x100a30000 <UUID> /path/to/MyApp".
+    /// One line of the image list and of "Binary Images:": "0x100a30000 <UUID> arm64 /path/to/MyApp"
+    /// ("-" for an unknown UUID or arch). The path may contain spaces, so it comes last.
     public static func imageLine(_ image: BinaryImage) -> String {
-        "0x\(String(image.loadAddress, radix: 16)) \(image.uuid.isEmpty ? "-" : image.uuid) \(image.path)"
+        "0x\(String(image.loadAddress, radix: 16)) \(image.uuid.isEmpty ? "-" : image.uuid) "
+            + "\(image.arch.isEmpty ? "-" : image.arch) \(image.path)"
     }
 
     public static func parseImageLine(_ line: Substring) -> BinaryImage? {
-        let parts = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
-        guard parts.count == 3, let load = hexValue(parts[0]) else { return nil }
+        let parts = line.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: true)
+        guard parts.count == 4, let load = hexValue(parts[0]) else { return nil }
         let uuid = parts[1] == "-" ? "" : String(parts[1])
-        return BinaryImage(loadAddress: load, uuid: uuid, path: String(parts[2]))
+        let arch = parts[2] == "-" ? "" : String(parts[2])
+        return BinaryImage(loadAddress: load, uuid: uuid, path: String(parts[3]), arch: arch)
+    }
+
+    /// `zharp.binary_images`: `[{"arch","loadAddress","name","uuid"}]`, the load address as a hex
+    /// string ("0x100a30000"; 64-bit values don't survive JSON numbers in JavaScript).
+    public static func binaryImagesJSON(_ images: [BinaryImage]) -> String {
+        let list: [[String: String]] = images.map {
+            ["name": $0.name, "uuid": $0.uuid, "loadAddress": "0x" + String($0.loadAddress, radix: 16), "arch": $0.arch]
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: list, options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else { return "[]" }
+        return text
     }
 
     // MARK: Signal report
@@ -215,9 +246,10 @@ public enum CrashFormat {
         let message = signalMessage(report.signal)
         let addresses = crashedThreadAddresses(report)
         var text = stacktrace(type: type, message: message, addresses: addresses, images: report.images)
-        let section = binaryImagesSection(addresses: addresses, images: report.images)
+        let used = usedImages(addresses: addresses, images: report.images)
+        let section = binaryImagesSection(used)
         if !section.isEmpty { text += "\n\n" + section }
-        return ErrorDescription(type: type, message: message, stacktrace: text)
+        return ErrorDescription(type: type, message: message, stacktrace: text, images: used)
     }
 
     /// The crashed thread's frames, innermost first: the faulting instruction, then the callers.
@@ -255,15 +287,24 @@ public enum CrashFormat {
         return line
     }
 
-    /// "Binary Images:" with each image an address is in, for symbolication.
-    public static func binaryImagesSection(addresses: [UInt64], images: [BinaryImage]) -> String {
+    /// Each image an address is in, once, by load address.
+    public static func usedImages(addresses: [UInt64], images: [BinaryImage]) -> [BinaryImage] {
         var used: [BinaryImage] = []
         for address in addresses {
             if let image = image(containing: address, in: images), !used.contains(image) { used.append(image) }
         }
+        return used.sorted { $0.loadAddress < $1.loadAddress }
+    }
+
+    /// "Binary Images:" with each image an address is in, for symbolication.
+    public static func binaryImagesSection(addresses: [UInt64], images: [BinaryImage]) -> String {
+        binaryImagesSection(usedImages(addresses: addresses, images: images))
+    }
+
+    /// "Binary Images:" then one `imageLine` per image ("" for none).
+    public static func binaryImagesSection(_ used: [BinaryImage]) -> String {
         guard !used.isEmpty else { return "" }
-        let lines = used.sorted { $0.loadAddress < $1.loadAddress }.map(imageLine)
-        return (["Binary Images:"] + lines).joined(separator: "\n")
+        return (["Binary Images:"] + used.map(imageLine)).joined(separator: "\n")
     }
 
     /// The image with the highest load address at or below `address`, if the address is plausibly

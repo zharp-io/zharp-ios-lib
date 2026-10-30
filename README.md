@@ -120,11 +120,58 @@ EXC_BAD_ACCESS: SIGSEGV, the app touched memory it may not use
 …
 
 Binary Images:
-0x100a30000 6F1D…A1B2 /private/var/containers/Bundle/Application/…/MyApp.app/MyApp
+0x100a30000 6F1D…A1B2 arm64 /private/var/containers/Bundle/Application/…/MyApp.app/MyApp
 ```
 
-Release builds are stripped, so your own frames are addresses. Symbolicate them with the build's
-dSYM (Xcode → Organizer → Archives → Show dSYMs) — the UUID says which one:
+The same images go along as `zharp.binary_images` (`[{name, uuid, loadAddress, arch}]`), on
+crashes and on errors you catch.
+
+### Readable stack traces: upload your dSYMs
+
+Release builds are stripped, so your own frames are addresses. Upload each build's dSYMs and
+Zharp shows (and groups) those crashes and errors by your functions, files and lines, matching
+each image to its dSYM by UUID.
+
+Make sure the build writes dSYMs (Build Settings → Debug Information Format → **DWARF with dSYM
+File** for Release), then add a **Run Script** build phase after the others:
+
+```bash
+# Upload this build's dSYMs to Zharp (release builds only).
+if [ "$CONFIGURATION" = "Release" ] && [ -n "$ZHARP_AUTH_TOKEN" ]; then
+  export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"   # Xcode doesn't load your shell's PATH
+  npx --yes @zharp/cli dsym upload "$DWARF_DSYM_FOLDER_PATH" --app <application id> || \
+    echo "warning: Zharp dSYM upload failed; crashes from this build stay unsymbolicated until it's uploaded"
+fi
+```
+
+In the phase, add `$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)` under **Input Files** (so
+Xcode runs it after the dSYM is written) and, with User Script Sandboxing on, allow the folder to be
+read. `ZHARP_AUTH_TOKEN` is a workspace API key with the `artifacts:write` scope — a secret: set it
+in CI (or your shell, for archives from Xcode via `launchctl setenv`), never in the project.
+`ZHARP_URL` points at a self-hosted Zharp.
+
+**No Node on the build machine?** The CLI zips and posts each dSYM; the same with curl:
+
+```bash
+if [ "$CONFIGURATION" = "Release" ] && [ -n "$ZHARP_AUTH_TOKEN" ]; then
+  APP_ID=<application id>
+  URL="${ZHARP_URL:-https://api.zharp.io}/api/v1/applications/$APP_ID/artifacts"
+  find "$DWARF_DSYM_FOLDER_PATH" -maxdepth 1 -name '*.dSYM' | while read -r dsym; do
+    for dwarf in "$dsym"/Contents/Resources/DWARF/*; do
+      # One upload per architecture slice, keyed by its Mach-O UUID.
+      xcrun dwarfdump --uuid "$dwarf" | while read -r _ uuid arch _; do
+        arch="${arch#(}"; arch="${arch%)}"
+        curl --fail --silent --show-error -H "Authorization: Bearer $ZHARP_AUTH_TOKEN" \
+          -F kind=dsym -F "debugId=$uuid" -F "arch=$arch" -F "name=$(basename "$dwarf")" \
+          -F "file=@$dwarf" "$URL" || echo "warning: Zharp dSYM upload failed for $uuid"
+      done
+    done
+  done
+fi
+```
+
+For an archive built elsewhere (its dSYMs: Organizer → Archives → Show dSYMs), run `npx @zharp/cli dsym upload <path to .dSYM or folder> --app <id>`.
+By hand, one address at a time, `atos` does the same:
 
 ```bash
 atos -arch arm64 -o MyApp.app.dSYM/Contents/Resources/DWARF/MyApp -l 0x100a30000 0x0000000100a3c1f4
