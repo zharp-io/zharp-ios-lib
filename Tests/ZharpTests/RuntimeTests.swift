@@ -160,6 +160,34 @@ final class RuntimeTests: XCTestCase {
         XCTAssertFalse(runtime.settings.tracingOrigins.matches(URL(string: "https://cdn.other.com/x")!))
     }
 
+    func testTracingOffSendsLogsAndErrorsButNoSpansOrHeaders() throws {
+        enum CheckoutError: Error { case cardDeclined }
+        let runtime = try makeRuntime {
+            $0.tracing = false
+            $0.tracingOrigins = ["api.example.com"]
+        }
+        XCTAssertFalse(runtime.settings.tracing)
+        runtime.context.setUser(UserInfo(id: "user-42"))
+        runtime.context.setTag("plan", "pro")
+        runtime.screenDidAppear("Checkout")
+        runtime.beginSpan("load cart", attributes: [:]).end()
+        let span = runtime.beginSpan("HTTP GET", attributes: [:])
+        var request = URLRequest(url: URL(string: "https://api.example.com/cart")!)
+        runtime.injectTraceHeaders(into: &request, span: span)
+        span.end()
+        runtime.log(.info, "logs only", attributes: [:])
+        runtime.captureError(CheckoutError.cardDeclined, attributes: [:], callStack: Thread.callStackSymbols)
+        flush(runtime)
+
+        XCTAssertNil(request.value(forHTTPHeaderField: "traceparent"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "baggage"))
+        XCTAssertTrue(try batches(.traces).isEmpty)
+        assertContains(try batches(.logs).reduce(Data(), +), [
+            "logs only", "exception.type", "CheckoutError", "zharp.handled", "true",
+            "enduser.id", "user-42", "plan", "pro", "app.screen.name", "Checkout", "session.id",
+        ])
+    }
+
     func testMissingKeyDoesNotStart() {
         let options = ZharpOptions()
         XCTAssertNil(Settings.resolve(options))

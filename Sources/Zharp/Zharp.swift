@@ -74,7 +74,8 @@ public enum Zharp {
     }
 
     /// Runs `operation` inside a span named `name`. Requests and spans started inside it become
-    /// its children; a thrown error marks it failed and is rethrown.
+    /// its children; a thrown error marks it failed and is rethrown. With `options.tracing = false`
+    /// it only runs `operation`.
     ///
     /// ```swift
     /// let receipt = try Zharp.startSpan("checkout") { try checkout(cart) }
@@ -82,7 +83,7 @@ public enum Zharp {
     @discardableResult
     public static func startSpan<T>(_ name: String, attributes: [String: Any] = [:],
                                     _ operation: () throws -> T) rethrows -> T {
-        guard let runtime = ZharpRuntime.shared else { return try operation() }
+        guard let runtime = ZharpRuntime.shared, runtime.settings.tracing else { return try operation() }
         let span = runtime.beginSpan(name, attributes: attributes)
         defer { span.end() }
         do {
@@ -97,7 +98,7 @@ public enum Zharp {
     @discardableResult
     public static func startSpan<T>(_ name: String, attributes: [String: Any] = [:],
                                     _ operation: () async throws -> T) async rethrows -> T {
-        guard let runtime = ZharpRuntime.shared else { return try await operation() }
+        guard let runtime = ZharpRuntime.shared, runtime.settings.tracing else { return try await operation() }
         let span = runtime.beginSpan(name, attributes: attributes)
         defer { span.end() }
         do {

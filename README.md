@@ -202,6 +202,20 @@ Zharp.log.debug("Cache miss")
 Each log carries the session, the user, the current screen and the active span, so it shows up
 in the trace and the session it belongs to. `print` and `os_log` aren't sent.
 
+## Logs only
+
+```swift
+Zharp.start { options in
+    options.key = "zpk_…"
+    options.tracing = false
+}
+```
+
+Logs, errors, crashes, hangs, the user, session, screen and tags are still sent; no spans are
+made or sent (no screen or URLSession spans, `startSpan` just runs its closure, OpenTelemetry's
+global tracer stays a no-op) and no request gets `traceparent` or `baggage`, whatever
+`tracingOrigins` says.
+
 ## Your own spans
 
 ```swift
@@ -254,6 +268,7 @@ stops for an hour — nothing piles up meanwhile, and the app is unaffected.
 | `release` | `"2.3.0 (412)"` from the bundle | The app version. |
 | `endpoint` | `https://api.zharp.io/api/v1/otlp` | Where to send. |
 | `tracingOrigins` | `[]` | Hosts that get `traceparent` and `baggage`. |
+| `tracing` | `true` | `false` = logs only (no spans, no trace headers). |
 | `sampleRate` | `1.0` | The share of traces kept. Errors, crashes and logs are always sent. |
 | `captureCrashes` | `true` | |
 | `detectHangs` / `hangThreshold` | `true` / `2` s | |

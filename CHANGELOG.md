@@ -9,6 +9,8 @@
 - Sessions (new after 30 minutes in the background or on `clearUser`), device context, an
   install-scoped device ID.
 - UIKit screen views automatically, SwiftUI with `.zharpScreen("Name")`.
+- `options.tracing = false` for logs only: no spans and no trace headers; logs, errors and
+  context still sent.
 - URLSession spans; `traceparent` and `baggage` only to `tracingOrigins`.
 - Batching, an on-device outbox (5 MB cap) that survives offline and restarts, retries with
   backoff, and a one-hour pause with one warning when the key is rejected.

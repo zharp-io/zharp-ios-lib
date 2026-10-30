@@ -122,7 +122,8 @@ final class ZharpRuntime: @unchecked Sendable {
                                                maxExportBatchSize: 100)
         let tracerProvider = TracerProviderBuilder()
             .with(resource: resource)
-            .with(sampler: ZharpSampler(rate: settings.sampleRate))
+            // Logs only: every span is dropped, so nothing reaches the exporter.
+            .with(sampler: settings.tracing ? ZharpSampler(rate: settings.sampleRate) as Sampler : Samplers.alwaysOff)
             .add(spanProcessor: ContextSpanProcessor(context: context))
             .add(spanProcessor: spanProcessor)
             .build()
@@ -144,8 +145,11 @@ final class ZharpRuntime: @unchecked Sendable {
             .with(processors: [logProcessor])
             .build()
 
-        // Registered globally too, so spans an app makes with the OpenTelemetry API go to Zharp.
-        OpenTelemetry.registerTracerProvider(tracerProvider: tracerProvider)
+        // Registered globally too, so spans an app makes with the OpenTelemetry API go to Zharp
+        // (not in logs-only mode: the API keeps its no-op tracer).
+        if settings.tracing {
+            OpenTelemetry.registerTracerProvider(tracerProvider: tracerProvider)
+        }
         OpenTelemetry.registerLoggerProvider(loggerProvider: loggerProvider)
         let verbose = Diagnostics.verbose
         OpenTelemetry.registerFeedbackHandler { message in
@@ -173,7 +177,7 @@ final class ZharpRuntime: @unchecked Sendable {
         if environment.installsHooks {
             AppLifecycle.install(runtime: self)
             if settings.trackScreens { ScreenTracking.installUIKit() }
-            if settings.traceNetwork { NetworkTracing.install(runtime: self) }
+            if settings.tracing && settings.traceNetwork { NetworkTracing.install(runtime: self) }
             if settings.detectHangs {
                 let detector = HangDetector(threshold: settings.hangThreshold) { [weak self] threshold in
                     self?.reportHang(threshold: threshold)
@@ -280,6 +284,7 @@ final class ZharpRuntime: @unchecked Sendable {
         guard !repeated else { return }
 
         context.setScreen(name)
+        guard settings.tracing else { return }
         let span = tracer.spanBuilder(spanName: ScreenNaming.spanName(name))
             .setNoParent()
             .setSpanKind(spanKind: .internal)
@@ -293,7 +298,7 @@ final class ZharpRuntime: @unchecked Sendable {
 
     /// `traceparent` and `baggage` for a request to one of the `tracingOrigins`.
     func injectTraceHeaders(into request: inout URLRequest, span: Span?) {
-        guard let span = span else { return }
+        guard settings.tracing, let span = span else { return }
         let spanContext = span.context
         if let traceparent = TracePropagation.traceparent(traceId: spanContext.traceId.hexString,
                                                           spanId: spanContext.spanId.hexString,

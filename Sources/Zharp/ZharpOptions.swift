@@ -31,6 +31,11 @@ public final class ZharpOptions {
     /// `"api.example.com"`, `"*.example.com"`, `"https://api.example.com:8443"`.
     public var tracingOrigins: [String] = []
 
+    /// `false` for logs only: logs, errors, crashes, hangs, the user, session, screen and tags are
+    /// still sent, but no spans are made or sent (no screen or URLSession spans, `startSpan` just
+    /// runs its closure) and no request gets `traceparent` or `baggage`.
+    public var tracing = true
+
     /// The share of traces to keep, 0…1. Errors, crashes and logs are always sent.
     public var sampleRate: Double = 1.0
 
@@ -66,6 +71,7 @@ struct Settings {
     let environment: String?
     let release: String?
     let tracingOrigins: TracingOrigins
+    let tracing: Bool
     let sampleRate: Double
     let captureCrashes: Bool
     let detectHangs: Bool
@@ -95,6 +101,7 @@ struct Settings {
                                                  shortVersion: info["CFBundleShortVersionString"] as? String,
                                                  build: info["CFBundleVersion"] as? String),
             tracingOrigins: TracingOrigins(options.tracingOrigins),
+            tracing: options.tracing,
             sampleRate: Sampling.clampRate(options.sampleRate),
             captureCrashes: options.captureCrashes,
             detectHangs: options.detectHangs,
