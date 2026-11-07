@@ -11,14 +11,14 @@ iOS 15 and up, Swift Package Manager. Built on [OpenTelemetry Swift](https://git
 In Xcode: **File → Add Package Dependencies**, paste
 
 ```
-https://github.com/zharp-io/zharp-ios
+https://github.com/zharp-io/zharp-ios-lib
 ```
 
 and add the **Zharp** library to your app target. Or in `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/zharp-io/zharp-ios", from: "0.1.0"),
+    .package(url: "https://github.com/zharp-io/zharp-ios-lib", from: "0.1.0"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [.product(name: "Zharp", package: "zharp-ios")]),
@@ -368,7 +368,7 @@ to run it.
 Swift packages are released by git tag:
 
 1. Update `ZharpVersion.current` in `Sources/ZharpCore/Basics.swift` and `CHANGELOG.md`.
-2. `git tag -a 0.1.0 -m "0.1.0" && git push origin 0.1.0` on `github.com/zharp-io/zharp-ios`.
+2. `git tag -a 0.1.0 -m "0.1.0" && git push origin 0.1.0` on `github.com/zharp-io/zharp-ios-lib`.
 
 ## License
 
