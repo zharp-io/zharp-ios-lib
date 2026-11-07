@@ -21,7 +21,7 @@ dependencies: [
     .package(url: "https://github.com/zharp-io/zharp-ios-lib", from: "0.1.0"),
 ],
 targets: [
-    .target(name: "MyApp", dependencies: [.product(name: "Zharp", package: "zharp-ios")]),
+    .target(name: "MyApp", dependencies: [.product(name: "Zharp", package: "zharp-ios-lib")]),
 ]
 ```
 
