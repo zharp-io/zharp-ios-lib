@@ -139,7 +139,7 @@ final class RuntimeTests: XCTestCase {
         let previous = ContextSnapshot(sessionId: "previous-session", user: UserInfo(id: "user-7"),
                                        screen: "Payment", release: "1.2.2")
         try JSONEncoder().encode(previous).write(to: directory.appendingPathComponent("run-context.json"))
-        let report = "zharp-crash 1\nsignal \(SIGSEGV)\ntime 1700000000\npc 0x100002000\nframes\n0x100009000\n0x100003000\nimages\n0x100000000 11111111-2222-3333-4444-555555555555 /app/MyApp\n"
+        let report = "zharp-crash 1\nsignal \(SIGSEGV)\ntime 1700000000\npc 0x100002000\nframes\n0x100009000\n0x100003000\nimages\n0x100000000 11111111-2222-3333-4444-555555555555 arm64 /app/MyApp\n"
         let reportURL = directory.appendingPathComponent("crashes").appendingPathComponent(CrashReporter.signalFileName)
         try report.write(to: reportURL, atomically: true, encoding: .utf8)
 
