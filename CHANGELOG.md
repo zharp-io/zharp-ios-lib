@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `options.captureBodies` (`.errors`, `.all` or `CaptureBodies(…)`): request and response bodies
+  on URLSession spans, off by default. Field names kept, secret values `[Filtered]` on the device,
+  files in uploads and binary bodies described (`[file photo.png · image/png · 240 KB]`), text
+  capped at 32 KB (`maxSize` up to 128 KB). The same rules as Zharp's other SDKs.
+- Secret-looking query values in `url.full` (`token`, `key`, `sig`, …) are recorded as `[Filtered]`.
+
 ## 0.1.0 (unreleased)
 
 - First release: `Zharp` for iOS 15 and up, on OpenTelemetry Swift 2.6.0.
