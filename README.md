@@ -237,6 +237,35 @@ session (`enduser.id`, `session.id`), which Zharp's server SDKs pick up. No othe
 them. An entry can be a host, `*.domain` for its subdomains, `host:port`, or a full origin such
 as `https://api.shop.com:8443`.
 
+Secret-looking values in a URL's query string (`token`, `key`, `sig`, `password`, …) are recorded
+as `[Filtered]`.
+
+### Request and response bodies
+
+Off by default. Turn it on to see what a request sent and what came back, under the request in
+the trace:
+
+```swift
+options.captureBodies = .errors   // failed requests only (400 and above, or no response)
+options.captureBodies = .all      // every request
+options.captureBodies = CaptureBodies(mode: .all, maxSize: 4096, redactKeys: ["dateOfBirth"],
+                                      urls: ["api.shop.com"])
+```
+
+- Every request except Zharp's own, unless `urls` (matched like `tracingOrigins`) narrows it.
+- Text (JSON, forms, XML, plain text) is kept up to 32 KB (`maxSize`, up to 128 KB).
+- Every field name is kept. A file in a `multipart/form-data` upload shows as
+  `[file photo.png · image/png · 240 KB]`, an inline image or other long base64 value as
+  `[image/png · 24 KB]`, and a body that isn't text as `[binary · application/pdf · 1.2 MB]` or
+  `[event stream]`. A streamed request body (`httpBodyStream`) is described, never read.
+- Values under keys that look secret (`password`, `token`, `secret`, `apiKey`, `authorization`,
+  `cookie`, `card`, `cvv`, `ssn` and similar) are replaced with `[Filtered]` on the device; under a
+  secret object every value is filtered and its keys kept. Other personal data, such as names and
+  email addresses, is sent as it is: add those keys to `redactKeys`.
+- Your app receives its responses exactly as before. With bodies on, URLSession tasks that use a
+  delegate or `async`/`await` hand their data to the SDK too, so it is kept in memory until the
+  request finishes.
+
 ## Logs
 
 ```swift
@@ -321,6 +350,7 @@ stops for an hour — nothing piles up meanwhile, and the app is unaffected.
 | `detectHangs` / `hangThreshold` | `true` / `2` s | |
 | `trackScreens` | `true` | UIKit view controllers. |
 | `traceNetwork` | `true` | URLSession spans. |
+| `captureBodies` | `nil` (off) | `.errors`, `.all` or `CaptureBodies(…)`. See Request and response bodies. |
 | `flushOnBackground` | `true` | |
 | `debug` | `false` | Print what the SDK does to the console. |
 

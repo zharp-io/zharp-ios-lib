@@ -54,6 +54,21 @@ public final class ZharpOptions {
     /// Trace URLSession requests (CLIENT spans) and add trace headers for `tracingOrigins`.
     public var traceNetwork = true
 
+    /// Request and response bodies on URLSession spans. Default `nil`: off.
+    ///
+    /// `.errors` keeps them for failed requests only (status 400 and above, or no response);
+    /// `.all` for every request. Every request except Zharp's own is covered unless `urls` is
+    /// set. Text is kept up to 32 KB; files in uploads, inline images and binary bodies are
+    /// described (name, type, size), never sent. Field names always stay; values under
+    /// secret-looking keys (`password`, `token`, `authorization`, `card`, …) become `[Filtered]`
+    /// on the device. Other personal data is sent as it is: add its keys to `redactKeys`.
+    ///
+    /// ```swift
+    /// options.captureBodies = .errors
+    /// options.captureBodies = CaptureBodies(mode: .all, maxSize: 4096, redactKeys: ["dateOfBirth"])
+    /// ```
+    public var captureBodies: CaptureBodies?
+
     /// Send everything waiting when the app goes to the background.
     public var flushOnBackground = true
 
@@ -61,6 +76,36 @@ public final class ZharpOptions {
     public var debug = false
 
     public init() {}
+}
+
+/// `ZharpOptions.captureBodies`.
+public struct CaptureBodies {
+    public enum Mode { case errors, all }
+
+    /// `.errors`: failed requests only (status 400 and above, or no response). `.all`: every request.
+    public var mode: Mode
+    /// Characters kept per body. Default 32768 (32 KB), at most 131072 (128 KB).
+    public var maxSize: Int
+    /// More keys whose values are replaced with `[Filtered]`, compared ignoring case, `-` and `_`.
+    public var redactKeys: [String]
+    /// More keys filtered, as regular expressions tested against the key as it is.
+    public var redactKeyPatterns: [NSRegularExpression]
+    /// Which requests have their bodies captured, matched like `tracingOrigins`. Default: all.
+    public var urls: [String]?
+
+    public init(mode: Mode = .errors, maxSize: Int = 32 * 1024, redactKeys: [String] = [],
+                redactKeyPatterns: [NSRegularExpression] = [], urls: [String]? = nil) {
+        self.mode = mode
+        self.maxSize = maxSize
+        self.redactKeys = redactKeys
+        self.redactKeyPatterns = redactKeyPatterns
+        self.urls = urls
+    }
+
+    /// Bodies of failed requests.
+    public static let errors = CaptureBodies(mode: .errors)
+    /// Bodies of every request.
+    public static let all = CaptureBodies(mode: .all)
 }
 
 /// The options, checked and with defaults filled in.
@@ -79,6 +124,10 @@ struct Settings {
     let trackScreens: Bool
     let traceNetwork: Bool
     let flushOnBackground: Bool
+    /// `captureBodies`, or nil when it is off.
+    let bodies: BodySettings?
+    /// Which URLs `bodies` covers; nil is all of them.
+    let bodyURLs: TracingOrigins?
 
     static func resolve(_ options: ZharpOptions, bundle: Bundle = .main) -> Settings? {
         let key = options.key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -108,7 +157,12 @@ struct Settings {
             hangThreshold: max(options.hangThreshold, 0.25),
             trackScreens: options.trackScreens,
             traceNetwork: options.traceNetwork,
-            flushOnBackground: options.flushOnBackground
+            flushOnBackground: options.flushOnBackground,
+            bodies: options.captureBodies.map {
+                BodySettings(mode: $0.mode == .all ? .all : .errors, maxSize: $0.maxSize,
+                             redactKeys: $0.redactKeys, redactPatterns: $0.redactKeyPatterns)
+            },
+            bodyURLs: options.captureBodies?.urls.map { TracingOrigins($0) }
         )
     }
 }
