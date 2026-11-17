@@ -144,3 +144,12 @@ public struct ZharpLog {
         ZharpRuntime.shared?.log(level, message, attributes: AttributeMapping.map(attributes))
     }
 }
+
+extension Zharp {
+    /// For Zharp's own adapters (`ZharpLogging`): a log record at any level, in the caller's
+    /// span, remembered so the same text printed to stdout isn't sent again. Nothing unless
+    /// `options.logs` is on.
+    package static func adapterLog(_ level: LogLevel, _ message: String, attributes: [String: Any]) {
+        ZharpRuntime.shared?.adapterLog(level, message, attributes: AttributeMapping.map(attributes))
+    }
+}

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0 — 2026-11-17
+
+- `options.logs` (default **off**): the switch for sending the app's own logs. Off, nothing it
+  logs or prints is sent — stdout and stderr are untouched, the unified log isn't read and
+  `ZharpLogHandler` forwards nothing; crashes, errors, hangs, traces, sessions, screens and
+  `Zharp.log` calls are sent either way. `ZHARP_LOGS=true` also turns it on. The options below
+  only apply with it on.
+- `options.captureOutput` (default on, with `logs`): everything the app prints — `print`, `NSLog`, `printf`,
+  logging libraries writing to stdout or stderr — is sent as logs, with the level read from the
+  line (JSON `level`, `ERROR`, `[warn]`…; else info, warning on stderr; `NSLog` info). The app's
+  output is unchanged; a line `Zharp.log` already sent isn't sent twice. Not while a debugger is
+  attached. `ZHARP_CAPTURE_OUTPUT=false` also turns it off.
+- `ZharpLogging`: `ZharpLogHandler` for swift-log, keeping the span, label and metadata (with `logs` on).
+- `options.captureOSLog` (default off, needs `logs`): the app's own `os_log`/`Logger` entries, read back from
+  the unified log every 30 seconds and when the app goes to the background.
+
+- Docs: the README no longer describes a custom endpoint; the SDK sends straight to Zharp.
+
 ## 0.2.0
 
 - `options.captureBodies` (`.errors`, `.all` or `CaptureBodies(…)`): request and response bodies

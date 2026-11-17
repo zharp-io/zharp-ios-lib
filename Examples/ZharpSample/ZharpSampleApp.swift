@@ -8,8 +8,8 @@ struct ZharpSampleApp: App {
     init() {
         let environment = ProcessInfo.processInfo.environment
         Zharp.start { options in
-            // Set ZHARP_KEY (and ZHARP_ENDPOINT for a local stack) in the scheme's environment
-            // variables, so no key is ever committed.
+            // Set ZHARP_KEY in the scheme's environment variables, so no key is ever committed.
+            // (ZHARP_ENDPOINT is for Zharp's own testing.)
             options.key = environment["ZHARP_KEY"] ?? ""
             options.service = "zharp-ios-sample"
             options.environment = "development"

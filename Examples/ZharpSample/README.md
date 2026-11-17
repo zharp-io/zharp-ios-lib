@@ -10,10 +10,6 @@ a manual span, a second screen, a hang, and two crashes.
    this folder.
 4. **Product → Scheme → Edit Scheme → Run → Arguments → Environment Variables**:
    - `ZHARP_KEY` — an app key (`zpk_…`) from **Applications → your app → Settings** in Zharp.
-   - `ZHARP_ENDPOINT` — only for a local stack, e.g. `http://<your Mac's LAN IP>:3000/api/v1/otlp`
-     (a device can't reach `localhost` on your Mac; the simulator can). Plain `http` also needs
-     `NSAppTransportSecurity → NSAllowsArbitraryLoads` (or an exception for that host) in the
-     app's Info.plist.
 5. Run it. The console shows `[Zharp] Active: service "zharp-ios-sample"…` and, with `debug` on,
    what is sent.
 

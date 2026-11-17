@@ -26,6 +26,7 @@ final class RuntimeTests: XCTestCase {
         options.service = "ios-tests"
         options.environment = "test"
         options.release = "1.2.3"
+        options.logs = true
         configure(options)
         let settings = try XCTUnwrap(Settings.resolve(options))
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "zharp-tests-\(UUID().uuidString)"))
