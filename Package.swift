@@ -16,10 +16,14 @@ let package = Package(
     ],
     products: [
         .library(name: "Zharp", targets: ["Zharp"]),
+        // Optional: swift-log's Logger into Zharp (`ZharpLogHandler`).
+        .library(name: "ZharpLogging", targets: ["ZharpLogging"]),
     ],
     dependencies: [
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", exact: "2.6.0"),
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift.git", exact: "2.6.0"),
+        // Already in the graph through OpenTelemetry Swift; named here for ZharpLogging.
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
     ],
     targets: [
         .target(
@@ -37,6 +41,15 @@ let package = Package(
             ],
             path: "Sources/Zharp"
         ),
+        .target(
+            name: "ZharpLogging",
+            dependencies: [
+                "Zharp",
+                "ZharpCore",
+                .product(name: "Logging", package: "swift-log"),
+            ],
+            path: "Sources/ZharpLogging"
+        ),
         .testTarget(
             name: "ZharpCoreTests",
             dependencies: ["ZharpCore"],
@@ -47,6 +60,8 @@ let package = Package(
             dependencies: [
                 "Zharp",
                 "ZharpCore",
+                "ZharpLogging",
+                .product(name: "Logging", package: "swift-log"),
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
             ],

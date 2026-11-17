@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- `options.captureOutput` (default on): everything the app prints — `print`, `NSLog`, `printf`,
+  logging libraries writing to stdout or stderr — is sent as logs, with the level read from the
+  line (JSON `level`, `ERROR`, `[warn]`…; else info, warning on stderr; `NSLog` info). The app's
+  output is unchanged; a line `Zharp.log` already sent isn't sent twice. Not while a debugger is
+  attached. `ZHARP_CAPTURE_OUTPUT=false` also turns it off.
+- `ZharpLogging`: `ZharpLogHandler` for swift-log, keeping the span, label and metadata.
+- `options.captureOSLog` (default off): the app's own `os_log`/`Logger` entries, read back from
+  the unified log every 30 seconds and when the app goes to the background.
+
 ## 0.2.0
 
 - `options.captureBodies` (`.errors`, `.all` or `CaptureBodies(…)`): request and response bodies

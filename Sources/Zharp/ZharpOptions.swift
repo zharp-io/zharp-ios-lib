@@ -69,6 +69,22 @@ public final class ZharpOptions {
     /// ```
     public var captureBodies: CaptureBodies?
 
+    /// Send everything the app prints as logs too: `print`, `debugPrint`, `dump`, `NSLog`, and
+    /// anything else written to stdout or stderr (C's `printf`, logging libraries that print).
+    /// Default `true`. Each line's level is read from the line (a JSON record's `level`, a word
+    /// such as `ERROR` or `[warn]`), else info — warning for stderr other than `NSLog`. It
+    /// carries the session, user, screen and tags, but not the span (`Zharp.log` and the
+    /// swift-log handler keep that). A line `Zharp.log` already sent isn't sent twice, and the
+    /// app's output is unchanged. Not while a debugger is attached at `start` (Xcode's console is
+    /// left alone). `false`, or the environment variable `ZHARP_CAPTURE_OUTPUT=false`, turns it off.
+    public var captureOutput = true
+
+    /// Send the app's own `os_log` and `Logger` entries too, read back from the unified log every
+    /// 30 seconds and when the app goes to the background. Default `false`: reading the log costs
+    /// CPU time on the device. Entries keep their time, level, subsystem and category; values not
+    /// marked `privacy: .public` arrive as `<private>`.
+    public var captureOSLog = false
+
     /// Send everything waiting when the app goes to the background.
     public var flushOnBackground = true
 
@@ -124,6 +140,8 @@ struct Settings {
     let trackScreens: Bool
     let traceNetwork: Bool
     let flushOnBackground: Bool
+    let captureOutput: Bool
+    let captureOSLog: Bool
     /// `captureBodies`, or nil when it is off.
     let bodies: BodySettings?
     /// Which URLs `bodies` covers; nil is all of them.
@@ -158,6 +176,9 @@ struct Settings {
             trackScreens: options.trackScreens,
             traceNetwork: options.traceNetwork,
             flushOnBackground: options.flushOnBackground,
+            captureOutput: options.captureOutput
+                && ProcessInfo.processInfo.environment["ZHARP_CAPTURE_OUTPUT"]?.lowercased() != "false",
+            captureOSLog: options.captureOSLog,
             bodies: options.captureBodies.map {
                 BodySettings(mode: $0.mode == .all ? .all : .errors, maxSize: $0.maxSize,
                              redactKeys: $0.redactKeys, redactPatterns: $0.redactKeyPatterns)

@@ -71,12 +71,16 @@ final class ZharpRuntime: @unchecked Sendable {
     let logProcessor: BatchLogRecordProcessor
     let tracer: Tracer
     let logger: OpenTelemetryApi.Logger
+    /// What `log` sent lately, so the same text printed to stdout or stderr isn't sent again.
+    let recentLines = RecentLines()
 
     private let environment: RuntimeEnvironment
     private let runContext: RunContextStore
     let crashDirectory: URL
     private let workQueue = DispatchQueue(label: "io.zharp.work", qos: .utility)
     private var hangDetector: HangDetector?
+    private var outputCollector: OutputCollector?
+    private var osLogReader: OSLogReader?
 
     private let screenLock = NSLock()
     private var lastScreen: String?
@@ -178,6 +182,21 @@ final class ZharpRuntime: @unchecked Sendable {
             AppLifecycle.install(runtime: self)
             if settings.trackScreens { ScreenTracking.installUIKit() }
             if settings.tracing && settings.traceNetwork { NetworkTracing.install(runtime: self) }
+            // Not under the debugger: when the app stops on a crash there, the last lines (Swift's
+            // "Fatal error: …") would still be in the pipe, missing from Xcode's console.
+            if settings.captureOutput && !HangDetector.isDebuggerAttached() {
+                let collector = makeOutputCollector()
+                outputCollector = collector
+                OutputCapture.install(collector: collector)
+            }
+            if settings.captureOSLog {
+                let reader = OSLogReader { [weak self] line, date in
+                    guard let self = self, !self.recentLines.alreadySent(line.body) else { return }
+                    self.log(line, timestamp: date)
+                }
+                osLogReader = reader
+                reader.start()
+            }
             if settings.detectHangs {
                 let detector = HangDetector(threshold: settings.hangThreshold) { [weak self] threshold in
                     self?.reportHang(threshold: threshold)
@@ -191,8 +210,11 @@ final class ZharpRuntime: @unchecked Sendable {
 
     // MARK: Logs and errors
 
+    /// A log record with the current (or `previous`) context. `remember: false` for lines read
+    /// from the app's output, which no other capture will see again.
     func log(_ level: LogLevel, _ message: String, attributes: [String: AttrValue],
-             timestamp: Date? = nil, context previous: ContextSnapshot? = nil) {
+             timestamp: Date? = nil, context previous: ContextSnapshot? = nil, remember: Bool = true) {
+        if remember { recentLines.remember(message) }
         var all = attributes
         let snapshot = previous ?? context.snapshot()
         for (key, value) in snapshot.attributes() { all[key] = value }
@@ -208,6 +230,22 @@ final class ZharpRuntime: @unchecked Sendable {
         }
         builder.emit()
         if level.rawValue >= LogLevel.error.rawValue { flushErrorsSoon() }
+    }
+
+    /// A line read from stdout, stderr or the unified log.
+    func log(_ line: CapturedLine, timestamp: Date? = nil) {
+        log(line.level, line.body, attributes: line.attributes.mapValues { AttrValue.string($0) },
+            timestamp: timestamp, remember: false)
+    }
+
+    /// Output bytes in, log records out (`log.source` and `log.iostream`: `stdout` or `stderr`).
+    func makeOutputCollector() -> OutputCollector {
+        OutputCollector(recent: recentLines) { [weak self] line, stream in
+            var attributes = line.attributes
+            attributes["log.source"] = stream.rawValue
+            attributes["log.iostream"] = stream.rawValue
+            self?.log(CapturedLine(level: line.level, body: line.body, attributes: attributes))
+        }
     }
 
     func captureError(_ error: Error, attributes: [String: Any], callStack: [String], addresses: [UInt64] = []) {
@@ -321,6 +359,7 @@ final class ZharpRuntime: @unchecked Sendable {
     func didEnterBackground() {
         context.didEnterBackground()
         hangDetector?.setPaused(true)
+        osLogReader?.catchUp()
     }
 
     func willEnterForeground() {

@@ -276,7 +276,86 @@ Zharp.log.debug("Cache miss")
 ```
 
 Each log carries the session, the user, the current screen and the active span, so it shows up
-in the trace and the session it belongs to. `print` and `os_log` aren't sent.
+in the trace and the session it belongs to.
+
+### `print`, `NSLog` and everything else printed
+
+On by default: whatever the app writes to stdout or stderr is sent as logs too — `print`,
+`debugPrint`, `dump`, `NSLog`, C's `printf`, `FileHandle.standardError`, logging libraries that
+print. The app's output is unchanged: every byte still goes where it went before.
+
+- Each line's level is read from the line: a JSON record's `level` or `severity` (`{"level":"error","msg":"…"}`
+  sends `…` as an error), or a level word near its start (`ERROR`, `[warn]`, `level=error`,
+  Swift's `Fatal error:`). Otherwise stdout is info and stderr a warning — except `NSLog`, whose
+  lines are info, with its date/process prefix dropped.
+- Lines carry the session, user, screen and tags (`log.source` and `log.iostream`: `stdout` or
+  `stderr`), but not the span they were printed in: stdout is read on a background thread. Use
+  `Zharp.log` or swift-log (below) where the trace matters.
+- A line `Zharp.log` or the swift-log handler sent in the last few seconds isn't sent again when
+  it's also printed, and Zharp's own `[Zharp] …` lines are never sent.
+- Lines are cut at 32 KB; an unfinished line is sent after 200 ms.
+
+How: file descriptors 1 and 2 are pointed at pipes that a background thread reads and copies
+straight back to the original destination, and stdout is made line-buffered so `print` output
+isn't held back. Not while a debugger is attached at `start` — Xcode's console is left exactly as
+it is (launch from the home screen to try it). `options.captureOutput = false`, or the environment
+variable `ZHARP_CAPTURE_OUTPUT=false`, turns it off.
+
+### swift-log
+
+Add the **ZharpLogging** library too and bootstrap its handler next to the one that prints:
+
+```swift
+import Logging
+import ZharpLogging
+
+LoggingSystem.bootstrap { label in
+    MultiplexLogHandler([StreamLogHandler.standardOutput(label: label), ZharpLogHandler(label: label)])
+}
+```
+
+Each record keeps its level, the span it was logged in, the logger's label (`log.logger`), its
+metadata, and `code.function`/`code.filepath`/`code.lineno`. The printed copy isn't sent twice.
+
+### CocoaLumberjack
+
+Zharp doesn't depend on it; add a logger of your own:
+
+```swift
+import CocoaLumberjackSwift
+import Zharp
+
+final class ZharpDDLogger: DDAbstractLogger {
+    override func log(message: DDLogMessage) {
+        let attributes: [String: Any] = ["log.logger": message.fileName, "code.function": message.function ?? ""]
+        switch message.flag {
+        case .error: Zharp.log.error(message.message, attributes)
+        case .warning: Zharp.log.warn(message.message, attributes)
+        case .info: Zharp.log.info(message.message, attributes)
+        default: Zharp.log.debug(message.message, attributes)
+        }
+    }
+}
+
+DDLog.add(ZharpDDLogger())
+```
+
+It keeps the span, as `Zharp.log` does. (`DDTTYLogger`'s printed lines would be sent anyway, but
+without the span; the logger above sends them once, with it.)
+
+### `os_log` and `Logger`
+
+The unified log can't be tapped as it's written, so this one is opt in:
+
+```swift
+options.captureOSLog = true
+```
+
+Every 30 seconds, and when the app goes to the background, Zharp reads the app's own new entries
+back (`OSLogStore`) — from its executable, or any subsystem that isn't Apple's — with their time,
+level, subsystem and category, but not the span. Values not marked `privacy: .public` arrive as
+`<private>`, as in Console.app. Off by default because reading the store costs CPU time on the
+device.
 
 ## Logs only
 
@@ -351,6 +430,8 @@ stops for an hour — nothing piles up meanwhile, and the app is unaffected.
 | `trackScreens` | `true` | UIKit view controllers. |
 | `traceNetwork` | `true` | URLSession spans. |
 | `captureBodies` | `nil` (off) | `.errors`, `.all` or `CaptureBodies(…)`. See Request and response bodies. |
+| `captureOutput` | `true` | `print`, `NSLog`, anything written to stdout/stderr, as logs. `ZHARP_CAPTURE_OUTPUT=false` also turns it off. See Logs. |
+| `captureOSLog` | `false` | The app's own `os_log`/`Logger` entries, read back every 30 s. See Logs. |
 | `flushOnBackground` | `true` | |
 | `debug` | `false` | Print what the SDK does to the console. |
 
