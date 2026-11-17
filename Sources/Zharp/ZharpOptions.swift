@@ -23,7 +23,7 @@ public final class ZharpOptions {
     /// The release, e.g. "2.3.0". Default: the bundle's version and build, "2.3.0 (412)".
     public var release: String?
 
-    /// Where to send. Default: `https://api.zharp.io/api/v1/otlp`.
+    /// For Zharp's own testing; leave unset.
     public var endpoint: String?
 
     /// Hosts of your own back end that should receive `traceparent` and `baggage` headers, so a
@@ -69,9 +69,17 @@ public final class ZharpOptions {
     /// ```
     public var captureBodies: CaptureBodies?
 
-    /// Send everything the app prints as logs too: `print`, `debugPrint`, `dump`, `NSLog`, and
-    /// anything else written to stdout or stderr (C's `printf`, logging libraries that print).
-    /// Default `true`. Each line's level is read from the line (a JSON record's `level`, a word
+    /// Send the app's logs to Zharp: what it prints (`print`, `NSLog`, stdout and stderr — see
+    /// `captureOutput`), swift-log through `ZharpLogHandler`, and, with `captureOSLog`, its
+    /// `os_log`/`Logger` entries. Default `false`: none of it is sent, stdout and stderr are left
+    /// untouched and the unified log isn't read. Crashes, errors, hangs, traces, sessions, screens
+    /// and explicit `Zharp.log` calls are sent either way. The environment variable
+    /// `ZHARP_LOGS=true` turns it on too.
+    public var logs = false
+
+    /// With `logs` on: send everything the app prints as logs too — `print`, `debugPrint`, `dump`,
+    /// `NSLog`, and anything else written to stdout or stderr (C's `printf`, logging libraries
+    /// that print). Default `true`. Each line's level is read from the line (a JSON record's `level`, a word
     /// such as `ERROR` or `[warn]`), else info — warning for stderr other than `NSLog`. It
     /// carries the session, user, screen and tags, but not the span (`Zharp.log` and the
     /// swift-log handler keep that). A line `Zharp.log` already sent isn't sent twice, and the
@@ -79,7 +87,7 @@ public final class ZharpOptions {
     /// left alone). `false`, or the environment variable `ZHARP_CAPTURE_OUTPUT=false`, turns it off.
     public var captureOutput = true
 
-    /// Send the app's own `os_log` and `Logger` entries too, read back from the unified log every
+    /// With `logs` on: send the app's own `os_log` and `Logger` entries too, read back from the unified log every
     /// 30 seconds and when the app goes to the background. Default `false`: reading the log costs
     /// CPU time on the device. Entries keep their time, level, subsystem and category; values not
     /// marked `privacy: .public` arrive as `<private>`.
@@ -140,6 +148,9 @@ struct Settings {
     let trackScreens: Bool
     let traceNetwork: Bool
     let flushOnBackground: Bool
+    /// `logs`: the app's own logs and output are sent. `captureOutput` and `captureOSLog` are
+    /// only ever on with it.
+    let logs: Bool
     let captureOutput: Bool
     let captureOSLog: Bool
     /// `captureBodies`, or nil when it is off.
@@ -159,6 +170,8 @@ struct Settings {
         }
         let info = bundle.infoDictionary ?? [:]
         let environment = options.environment?.trimmingCharacters(in: .whitespaces)
+        let variables = ProcessInfo.processInfo.environment
+        let logs = options.logs || variables["ZHARP_LOGS"]?.lowercased() == "true"
         return Settings(
             key: key,
             endpoint: endpoint,
@@ -176,9 +189,10 @@ struct Settings {
             trackScreens: options.trackScreens,
             traceNetwork: options.traceNetwork,
             flushOnBackground: options.flushOnBackground,
-            captureOutput: options.captureOutput
-                && ProcessInfo.processInfo.environment["ZHARP_CAPTURE_OUTPUT"]?.lowercased() != "false",
-            captureOSLog: options.captureOSLog,
+            logs: logs,
+            captureOutput: logs && options.captureOutput
+                && variables["ZHARP_CAPTURE_OUTPUT"]?.lowercased() != "false",
+            captureOSLog: logs && options.captureOSLog,
             bodies: options.captureBodies.map {
                 BodySettings(mode: $0.mode == .all ? .all : .errors, maxSize: $0.maxSize,
                              redactKeys: $0.redactKeys, redactPatterns: $0.redactKeyPatterns)

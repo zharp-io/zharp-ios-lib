@@ -101,17 +101,80 @@ final class OutputCaptureTests: XCTestCase {
         XCTAssertEqual(copied.lines.map { $0.0.body }.joined(), text)
     }
 
-    func testOutputReachesTheOutboxWithItsStreamAndContext() throws {
+    private func makeRuntime(_ configure: (ZharpOptions) -> Void = { _ in }) throws -> ZharpRuntime {
         let options = ZharpOptions()
         options.key = "zpk_00000000000000000000000000000000"
         options.service = "ios-tests"
+        configure(options)
         let settings = try XCTUnwrap(Settings.resolve(options))
-        XCTAssertTrue(settings.captureOutput)
-        XCTAssertFalse(settings.captureOSLog)
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "zharp-tests-\(UUID().uuidString)"))
         let runtime = ZharpRuntime(settings: settings, environment: RuntimeEnvironment(
             directory: directory, defaults: defaults, installsHooks: false, uploads: false))
         runtime.activate()
+        return runtime
+    }
+
+    /// Everything in the outbox's log batches, decompressed.
+    private func flushedLogs(_ runtime: ZharpRuntime) throws -> Data {
+        let done = expectation(description: "flushed")
+        runtime.flush(timeout: 5) { done.fulfill() }
+        wait(for: [done], timeout: 15)
+        let outbox = directory.appendingPathComponent("outbox")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: outbox.path)) ?? []
+        return names.reduce(Data()) { data, name in
+            guard let parsed = OutboxPolicy.parse(name), parsed.kind == .logs,
+                  let file = try? Data(contentsOf: outbox.appendingPathComponent(name))
+            else { return data }
+            return data + (parsed.gzip ? gunzip(file) : file)
+        }
+    }
+
+    /// The default: nothing the app logs or prints is sent, and stdout/stderr aren't touched —
+    /// while errors and explicit Zharp.log calls still are.
+    func testLogsAreOffByDefault() throws {
+        func identity(_ fd: Int32) -> String {
+            var info = stat()
+            guard fstat(fd, &info) == 0 else { return "closed" }
+            return "\(info.st_dev)/\(info.st_ino)/\(info.st_mode)"
+        }
+        let before = [identity(STDOUT_FILENO), identity(STDERR_FILENO)]
+
+        enum CheckoutError: Error { case cardDeclined }
+        let runtime = try makeRuntime()
+        XCTAssertFalse(ZharpOptions().logs)
+        XCTAssertFalse(runtime.settings.logs)
+        XCTAssertFalse(runtime.settings.captureOutput)
+        XCTAssertFalse(runtime.settings.captureOSLog)
+        XCTAssertFalse(runtime.wantsOutputCapture)
+        XCTAssertEqual([identity(STDOUT_FILENO), identity(STDERR_FILENO)], before)
+
+        runtime.adapterLog(.error, "Logged through swift-log", attributes: [:])
+        runtime.log(.info, "Explicit Zharp.log call", attributes: [:])
+        runtime.captureError(CheckoutError.cardDeclined, attributes: [:], callStack: Thread.callStackSymbols)
+        let all = try flushedLogs(runtime)
+
+        XCTAssertNil(all.range(of: Data("Logged through swift-log".utf8)))
+        for text in ["Explicit Zharp.log call", "exception.type", "CheckoutError"] {
+            XCTAssertNotNil(all.range(of: Data(text.utf8)), "missing \(text)")
+        }
+    }
+
+    func testCaptureOutputAndOSLogNeedLogsOn() throws {
+        let off = try makeRuntime { $0.captureOutput = true; $0.captureOSLog = true }
+        XCTAssertFalse(off.settings.captureOutput)
+        XCTAssertFalse(off.settings.captureOSLog)
+        let on = try makeRuntime { $0.logs = true; $0.captureOSLog = true }
+        XCTAssertTrue(on.settings.captureOutput)
+        XCTAssertTrue(on.settings.captureOSLog)
+        on.adapterLog(.info, "Logged through swift-log", attributes: [:])
+        XCTAssertNotNil(try flushedLogs(on).range(of: Data("Logged through swift-log".utf8)))
+    }
+
+    func testOutputReachesTheOutboxWithItsStreamAndContext() throws {
+        let runtime = try makeRuntime { $0.logs = true }
+        XCTAssertTrue(runtime.settings.logs)
+        XCTAssertTrue(runtime.settings.captureOutput)
+        XCTAssertFalse(runtime.settings.captureOSLog)
         runtime.context.setUser(UserInfo(id: "user-42"))
 
         runtime.log(.info, "Sent by Zharp.log once", attributes: [:])
@@ -120,17 +183,7 @@ final class OutputCaptureTests: XCTestCase {
         collector.ingest(Data("WARNING printed to stderr\n".utf8), from: .stderr)
         collector.drain()
 
-        let done = expectation(description: "flushed")
-        runtime.flush(timeout: 5) { done.fulfill() }
-        wait(for: [done], timeout: 15)
-
-        let outbox = directory.appendingPathComponent("outbox")
-        let all = try FileManager.default.contentsOfDirectory(atPath: outbox.path).reduce(Data()) { data, name in
-            guard let parsed = OutboxPolicy.parse(name), parsed.kind == .logs,
-                  let file = try? Data(contentsOf: outbox.appendingPathComponent(name))
-            else { return data }
-            return data + (parsed.gzip ? gunzip(file) : file)
-        }
+        let all = try flushedLogs(runtime)
         for text in ["Printed with print", "WARNING printed to stderr", "log.source", "log.iostream",
                      "stdout", "stderr", "enduser.id", "user-42"] {
             XCTAssertNotNil(all.range(of: Data(text.utf8)), "missing \(text)")

@@ -16,8 +16,8 @@ import ZharpCore
 ///
 /// Each record keeps the span it was logged in, its level, the logger's label (`log.logger`),
 /// its metadata as attributes, and where it was logged (`code.function`, `code.filepath`,
-/// `code.lineno`). The line the printing handler writes isn't sent a second time. Before
-/// `Zharp.start` it does nothing.
+/// `code.lineno`). The line the printing handler writes isn't sent a second time. It sends
+/// only with `options.logs = true`; otherwise, and before `Zharp.start`, it does nothing.
 public struct ZharpLogHandler: LogHandler {
     public let label: String
     public var logLevel: Logging.Logger.Level

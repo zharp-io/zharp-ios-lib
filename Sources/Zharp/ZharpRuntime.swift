@@ -182,14 +182,12 @@ final class ZharpRuntime: @unchecked Sendable {
             AppLifecycle.install(runtime: self)
             if settings.trackScreens { ScreenTracking.installUIKit() }
             if settings.tracing && settings.traceNetwork { NetworkTracing.install(runtime: self) }
-            // Not under the debugger: when the app stops on a crash there, the last lines (Swift's
-            // "Fatal error: …") would still be in the pipe, missing from Xcode's console.
-            if settings.captureOutput && !HangDetector.isDebuggerAttached() {
+            if wantsOutputCapture {
                 let collector = makeOutputCollector()
                 outputCollector = collector
                 OutputCapture.install(collector: collector)
             }
-            if settings.captureOSLog {
+            if settings.logs && settings.captureOSLog {
                 let reader = OSLogReader { [weak self] line, date in
                     guard let self = self, !self.recentLines.alreadySent(line.body) else { return }
                     self.log(line, timestamp: date)
@@ -230,6 +228,19 @@ final class ZharpRuntime: @unchecked Sendable {
         }
         builder.emit()
         if level.rawValue >= LogLevel.error.rawValue { flushErrorsSoon() }
+    }
+
+    /// Whether stdout and stderr are redirected: only with `logs` and `captureOutput` on, and not
+    /// under the debugger — when the app stops on a crash there, the last lines (Swift's
+    /// "Fatal error: …") would still be in the pipe, missing from Xcode's console.
+    var wantsOutputCapture: Bool {
+        settings.logs && settings.captureOutput && !HangDetector.isDebuggerAttached()
+    }
+
+    /// A record from a logging-library adapter (swift-log): sent only with `logs` on.
+    func adapterLog(_ level: LogLevel, _ message: String, attributes: [String: AttrValue]) {
+        guard settings.logs else { return }
+        log(level, message, attributes: attributes)
     }
 
     /// A line read from stdout, stderr or the unified log.

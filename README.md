@@ -148,14 +148,13 @@ In the phase, add `$(DWARF_DSYM_FOLDER_PATH)/$(DWARF_DSYM_FILE_NAME)` under **In
 Xcode runs it after the dSYM is written) and, with User Script Sandboxing on, allow the folder to be
 read. `ZHARP_AUTH_TOKEN` is a workspace API key with the `artifacts:write` scope — a secret: set it
 in CI (or your shell, for archives from Xcode via `launchctl setenv`), never in the project.
-`ZHARP_URL` points at a self-hosted Zharp.
 
 **No Node on the build machine?** The CLI zips and posts each dSYM; the same with curl:
 
 ```bash
 if [ "$CONFIGURATION" = "Release" ] && [ -n "$ZHARP_AUTH_TOKEN" ]; then
   APP_ID=<application id>
-  URL="${ZHARP_URL:-https://api.zharp.io}/api/v1/applications/$APP_ID/artifacts"
+  URL="https://api.zharp.io/api/v1/applications/$APP_ID/artifacts"
   find "$DWARF_DSYM_FOLDER_PATH" -maxdepth 1 -name '*.dSYM' | while read -r dsym; do
     for dwarf in "$dsym"/Contents/Resources/DWARF/*; do
       # One upload per architecture slice, keyed by its Mach-O UUID.
@@ -276,11 +275,31 @@ Zharp.log.debug("Cache miss")
 ```
 
 Each log carries the session, the user, the current screen and the active span, so it shows up
-in the trace and the session it belongs to.
+in the trace and the session it belongs to. `Zharp.log` is always sent.
+
+### The app's own logs: `options.logs`
+
+Off by default. Until you turn it on, nothing else the app logs or prints is sent: stdout and
+stderr are left untouched and the unified log isn't read. Crashes, errors, hangs, traces,
+sessions, screens and `Zharp.log` calls are sent either way.
+
+```swift
+Zharp.start { options in
+    options.key = "zpk_…"
+    options.logs = true
+}
+```
+
+(The environment variable `ZHARP_LOGS=true` turns it on too.) With it on, Zharp captures:
+
+- everything printed — `print`, `NSLog`, stdout and stderr (below; `captureOutput`, on with `logs`),
+- swift-log, through `ZharpLogHandler` (below),
+- CocoaLumberjack, through a few lines of your own (below),
+- `os_log` and `Logger`, if you also set `captureOSLog` (below).
 
 ### `print`, `NSLog` and everything else printed
 
-On by default: whatever the app writes to stdout or stderr is sent as logs too — `print`,
+With `logs` on, whatever the app writes to stdout or stderr is sent as logs too — `print`,
 `debugPrint`, `dump`, `NSLog`, C's `printf`, `FileHandle.standardError`, logging libraries that
 print. The app's output is unchanged: every byte still goes where it went before.
 
@@ -298,12 +317,13 @@ print. The app's output is unchanged: every byte still goes where it went before
 How: file descriptors 1 and 2 are pointed at pipes that a background thread reads and copies
 straight back to the original destination, and stdout is made line-buffered so `print` output
 isn't held back. Not while a debugger is attached at `start` — Xcode's console is left exactly as
-it is (launch from the home screen to try it). `options.captureOutput = false`, or the environment
+it is (launch from the home screen to try it). With `logs` on, `options.captureOutput = false`, or the environment
 variable `ZHARP_CAPTURE_OUTPUT=false`, turns it off.
 
 ### swift-log
 
-Add the **ZharpLogging** library too and bootstrap its handler next to the one that prints:
+With `logs` on (the handler forwards nothing otherwise), add the **ZharpLogging** library too and
+bootstrap its handler next to the one that prints:
 
 ```swift
 import Logging
@@ -345,9 +365,10 @@ without the span; the logger above sends them once, with it.)
 
 ### `os_log` and `Logger`
 
-The unified log can't be tapped as it's written, so this one is opt in:
+The unified log can't be tapped as it's written, so this one is a second opt-in, on top of `logs`:
 
 ```swift
+options.logs = true
 options.captureOSLog = true
 ```
 
@@ -421,7 +442,6 @@ stops for an hour — nothing piles up meanwhile, and the app is unaffected.
 | `service` | bundle identifier | The service name the data is filed under. |
 | `environment` | none | `production`, `staging`… |
 | `release` | `"2.3.0 (412)"` from the bundle | The app version. |
-| `endpoint` | `https://api.zharp.io/api/v1/otlp` | Where to send. |
 | `tracingOrigins` | `[]` | Hosts that get `traceparent` and `baggage`. |
 | `tracing` | `true` | `false` = logs only (no spans, no trace headers). |
 | `sampleRate` | `1.0` | The share of traces kept. Errors, crashes and logs are always sent. |
@@ -430,8 +450,9 @@ stops for an hour — nothing piles up meanwhile, and the app is unaffected.
 | `trackScreens` | `true` | UIKit view controllers. |
 | `traceNetwork` | `true` | URLSession spans. |
 | `captureBodies` | `nil` (off) | `.errors`, `.all` or `CaptureBodies(…)`. See Request and response bodies. |
-| `captureOutput` | `true` | `print`, `NSLog`, anything written to stdout/stderr, as logs. `ZHARP_CAPTURE_OUTPUT=false` also turns it off. See Logs. |
-| `captureOSLog` | `false` | The app's own `os_log`/`Logger` entries, read back every 30 s. See Logs. |
+| `logs` | `false` | Send the app's own logs: what it prints, swift-log, and (with `captureOSLog`) `os_log`. `ZHARP_LOGS=true` also turns it on. Crashes, errors, traces and `Zharp.log` are sent either way. See Logs. |
+| `captureOutput` | `true` | With `logs` on: `print`, `NSLog`, anything written to stdout/stderr. `ZHARP_CAPTURE_OUTPUT=false` also turns it off. |
+| `captureOSLog` | `false` | With `logs` on: the app's own `os_log`/`Logger` entries, read back every 30 s. |
 | `flushOnBackground` | `true` | |
 | `debug` | `false` | Print what the SDK does to the console. |
 
