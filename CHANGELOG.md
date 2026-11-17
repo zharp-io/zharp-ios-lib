@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-11-17
 
 - `options.logs` (default **off**): the switch for sending the app's own logs. Off, nothing it
   logs or prints is sent — stdout and stderr are untouched, the unified log isn't read and

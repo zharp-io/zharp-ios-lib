@@ -18,7 +18,7 @@ and add the **Zharp** library to your app target. Or in `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/zharp-io/zharp-ios-lib", from: "0.1.0"),
+    .package(url: "https://github.com/zharp-io/zharp-ios-lib", from: "0.3.0"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [.product(name: "Zharp", package: "zharp-ios-lib")]),
