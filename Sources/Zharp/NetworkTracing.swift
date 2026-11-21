@@ -11,6 +11,8 @@ import ZharpCore
 ///   `session.id`); the header values come from ZharpCore's `TracePropagation`, set in
 ///   `injectCustomHeaders`, which the instrumentation applies over its own propagators' values.
 /// - Secret-looking query values in `url.full` (`token`, `key`, `sig`, …) are `[Filtered]`.
+/// - With `captureHeaders` (the default), the headers that went out — the trace headers included —
+///   and those that came back go on the span, secrets `[Filtered]` (see `HeaderAttributes`).
 /// - With `captureBodies`, the request and response bodies go on the span (see `BodyAttributes`).
 ///   The instrumentation hands over the response data just before it ends the span, so the
 ///   span keeps the time the response arrived; what the app receives is never touched.
@@ -27,6 +29,7 @@ enum NetworkTracing {
         let endpointPrefix = runtime.settings.endpoint.absoluteString
         let bodies = runtime.settings.bodies
         let bodyURLs = runtime.settings.bodyURLs
+        let headerRedact = runtime.settings.headerRedact
         let pending = PendingRequests()
         // Delegate and async tasks only hand over their data when asked to record it.
         var recordPayload: ((URLSession) -> Bool?)?
@@ -50,10 +53,21 @@ enum NetworkTracing {
                     let redacted = BodyAttributes.redactURL(full)
                     if redacted != full { span.setAttribute(key: "url.full", value: AttributeValue.string(redacted)) }
                 }
+                if let redact = headerRedact {
+                    let sent = (request.allHTTPHeaderFields ?? [:]).map { ($0.key, $0.value) }
+                    NetworkBodies.set(HeaderAttributes.attributes(side: "request", headers: sent, redact: redact), on: span)
+                }
                 guard bodies != nil, let url = request.url, bodyURLs?.matches(url) ?? true else { return }
                 pending.store(request, for: span)
             },
             receivedResponse: { response, dataOrFile, span in
+                if let redact = headerRedact, let http = response as? HTTPURLResponse {
+                    let received = http.allHeaderFields.compactMap { key, value -> (String, String)? in
+                        guard let name = key as? String else { return nil }
+                        return (name, "\(value)")
+                    }
+                    NetworkBodies.set(HeaderAttributes.attributes(side: "response", headers: received, redact: redact), on: span)
+                }
                 guard let settings = bodies, let request = pending.take(for: span) else { return }
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 guard settings.wanted(status: status) else { return }

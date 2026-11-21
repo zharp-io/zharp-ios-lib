@@ -69,6 +69,15 @@ public final class ZharpOptions {
     /// ```
     public var captureBodies: CaptureBodies?
 
+    /// Request and response headers on URLSession spans (`http.request.header.*`,
+    /// `http.response.header.*`), so a failed request shows what was sent and what came back.
+    /// Default `true`. Secret headers (`authorization`, cookies, API keys, tokens…) are recorded
+    /// as `[Filtered]`; `redactHeaders` adds more names. `false` turns it off.
+    public var captureHeaders: Bool = true
+
+    /// More header names to record as `[Filtered]`, e.g. `["x-tenant"]`.
+    public var redactHeaders: [String] = []
+
     /// Send the app's logs to Zharp: what it prints (`print`, `NSLog`, stdout and stderr — see
     /// `captureOutput`), swift-log through `ZharpLogHandler`, and, with `captureOSLog`, its
     /// `os_log`/`Logger` entries. Default `false`: none of it is sent, stdout and stderr are left
@@ -157,6 +166,8 @@ struct Settings {
     let bodies: BodySettings?
     /// Which URLs `bodies` covers; nil is all of them.
     let bodyURLs: TracingOrigins?
+    /// `captureHeaders`: the extra secret names, or nil when headers aren't recorded.
+    var headerRedact: [String]? = []
 
     static func resolve(_ options: ZharpOptions, bundle: Bundle = .main) -> Settings? {
         let key = options.key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -197,7 +208,8 @@ struct Settings {
                 BodySettings(mode: $0.mode == .all ? .all : .errors, maxSize: $0.maxSize,
                              redactKeys: $0.redactKeys, redactPatterns: $0.redactKeyPatterns)
             },
-            bodyURLs: options.captureBodies?.urls.map { TracingOrigins($0) }
+            bodyURLs: options.captureBodies?.urls.map { TracingOrigins($0) },
+            headerRedact: options.captureHeaders ? options.redactHeaders : nil
         )
     }
 }
