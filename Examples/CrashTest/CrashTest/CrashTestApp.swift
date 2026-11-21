@@ -18,7 +18,7 @@ struct CrashTestApp: App {
             var request = URLRequest(url: url)
             request.setValue("Bearer user-token", forHTTPHeaderField: "Authorization")
             request.setValue("ios", forHTTPHeaderField: "X-Client")
-            URLSession.shared.dataTask(with: request).resume()
+            URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()
         }
         if environment["CRASH"] == "1" {
             // The bug, on its own: a cart line without a quantity.
