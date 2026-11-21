@@ -1,0 +1,58 @@
+name: Crash e2e (source bundles)
+
+# Builds Examples/CrashTest in Release with dSYMs, crashes it in the simulator, relaunches it so
+# the stored crash is sent to a local collector, and keeps the dSYMs + what was sent. Nothing is
+# sent to Zharp: the run's artifacts are replayed into a test Zharp afterwards.
+on:
+  push:
+    branches: [test/ios-crash-e2e]
+
+jobs:
+  crash:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use the newest Xcode on the runner
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+      - name: Unit tests (ZharpCore, Zharp)
+        run: swift test 2>&1 | tail -25
+      - name: Generate the project
+        working-directory: Examples/CrashTest
+        run: brew install xcodegen && xcodegen generate
+      - name: Build (Release, dSYM, simulator)
+        working-directory: Examples/CrashTest
+        run: |
+          xcodebuild build -project CrashTest.xcodeproj -scheme CrashTest -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO | tail -5
+          ls build/Build/Products/Release-iphonesimulator
+      - name: Crash it, then relaunch so the crash is sent
+        working-directory: Examples/CrashTest
+        run: |
+          python3 collector.py &
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')))")
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" build/Build/Products/Release-iphonesimulator/CrashTest.app
+          SIMCTL_CHILD_ZHARP_ENDPOINT=http://127.0.0.1:4318 SIMCTL_CHILD_CRASH=1 xcrun simctl launch "$DEVICE" io.zharp.e2e.CrashTest
+          sleep 15
+          SIMCTL_CHILD_ZHARP_ENDPOINT=http://127.0.0.1:4318 xcrun simctl launch "$DEVICE" io.zharp.e2e.CrashTest
+          sleep 30
+          xcrun simctl terminate "$DEVICE" io.zharp.e2e.CrashTest || true
+          sleep 5
+          ls -la captured
+      - name: Upload the dSYMs with the CLI under test (to the collector)
+        working-directory: Examples/CrashTest
+        run: |
+          python3 collector.py &
+          sleep 2
+          ZHARP_AUTH_TOKEN=zh_e2e ZHARP_URL=http://127.0.0.1:4318 SRCROOT="$PWD"             node zharp-cli/cli.js dsym upload build/Build/Products/Release-iphonesimulator --app 1
+          ls -la captured
+          xcrun swift-demangle --simplified --compact '$s9CrashTest4CartV5totalSiyF'
+      - name: Keep the dSYMs and what was sent
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-e2e
+          path: |
+            Examples/CrashTest/build/Build/Products/Release-iphonesimulator/*.dSYM
+            Examples/CrashTest/captured

@@ -1,0 +1,30 @@
+# A tiny app that crashes on purpose, for the source-bundle end-to-end test
+# (.github/workflows/crash-e2e.yml). Generated with XcodeGen.
+name: CrashTest
+options:
+  deploymentTarget:
+    iOS: "15.0"
+packages:
+  Zharp:
+    path: ../..
+targets:
+  CrashTest:
+    type: application
+    platform: iOS
+    sources: [CrashTest]
+    dependencies:
+      - package: Zharp
+        product: Zharp
+    info:
+      path: CrashTest/Info.plist
+      properties:
+        UILaunchScreen: {}
+        # The workflow's local collector is plain http.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.zharp.e2e.CrashTest
+        DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+        CODE_SIGNING_ALLOWED: "NO"
+        GENERATE_INFOPLIST_FILE: "NO"
