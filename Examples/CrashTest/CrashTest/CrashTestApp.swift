@@ -12,7 +12,9 @@ struct CrashTestApp: App {
             options.debug = true
         }
         // A request the collector fails (503), for header capture.
-        if let base = environment["ZHARP_ENDPOINT"], let url = URL(string: base + "/api/orders") {
+        // Not Zharp's own address (those requests are never traced): the same collector as localhost.
+        if let base = environment["ZHARP_ENDPOINT"]?.replacingOccurrences(of: "127.0.0.1", with: "localhost"),
+           let url = URL(string: base + "/api/orders") {
             var request = URLRequest(url: url)
             request.setValue("Bearer user-token", forHTTPHeaderField: "Authorization")
             request.setValue("ios", forHTTPHeaderField: "X-Client")
