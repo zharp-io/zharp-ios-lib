@@ -5,6 +5,8 @@ os.makedirs("captured", exist_ok=True)
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        with open("captured/%d-GET%s.json" % (time.time_ns(), self.path.replace("/", "_")), "w") as f:
+            json.dump({"path": self.path, "headers": dict(self.headers)}, f)
         self.send_response(503)
         self.send_header("Content-Type", "application/json")
         self.send_header("X-Request-Id", "req-7")

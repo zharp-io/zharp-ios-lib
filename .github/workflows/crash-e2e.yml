@@ -36,7 +36,7 @@ jobs:
           xcrun simctl install "$DEVICE" build/Build/Products/Release-iphonesimulator/CrashTest.app
           SIMCTL_CHILD_ZHARP_ENDPOINT=http://127.0.0.1:4318 SIMCTL_CHILD_CRASH=1 xcrun simctl launch "$DEVICE" io.zharp.e2e.CrashTest
           sleep 15
-          SIMCTL_CHILD_ZHARP_ENDPOINT=http://127.0.0.1:4318 xcrun simctl launch "$DEVICE" io.zharp.e2e.CrashTest
+          (SIMCTL_CHILD_ZHARP_ENDPOINT=http://127.0.0.1:4318 xcrun simctl launch --console-pty "$DEVICE" io.zharp.e2e.CrashTest > captured/app-console.log 2>&1 &)
           sleep 30
           xcrun simctl terminate "$DEVICE" io.zharp.e2e.CrashTest || true
           sleep 5
