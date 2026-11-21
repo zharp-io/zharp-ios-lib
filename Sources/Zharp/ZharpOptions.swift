@@ -43,6 +43,11 @@ public final class ZharpOptions {
     /// included). A crash is saved on the device and sent the next time the app starts.
     public var captureCrashes = true
 
+    /// Exception names (or their beginnings) not reported as crashes, because another layer already
+    /// reported them — e.g. React Native's `RCTFatalException`, raised for a fatal JS error that
+    /// @zharp/react-native reports as the JavaScript error it is.
+    public var ignoreCrashTypes: [String] = []
+
     /// Report when the main thread is blocked for `hangThreshold` seconds or more.
     public var detectHangs = true
     public var hangThreshold: TimeInterval = 2
@@ -68,6 +73,15 @@ public final class ZharpOptions {
     /// options.captureBodies = CaptureBodies(mode: .all, maxSize: 4096, redactKeys: ["dateOfBirth"])
     /// ```
     public var captureBodies: CaptureBodies?
+
+    /// Request and response headers on URLSession spans (`http.request.header.*`,
+    /// `http.response.header.*`), so a failed request shows what was sent and what came back.
+    /// Default `true`. Secret headers (`authorization`, cookies, API keys, tokens…) are recorded
+    /// as `[Filtered]`; `redactHeaders` adds more names. `false` turns it off.
+    public var captureHeaders: Bool = true
+
+    /// More header names to record as `[Filtered]`, e.g. `["x-tenant"]`.
+    public var redactHeaders: [String] = []
 
     /// Send the app's logs to Zharp: what it prints (`print`, `NSLog`, stdout and stderr — see
     /// `captureOutput`), swift-log through `ZharpLogHandler`, and, with `captureOSLog`, its
@@ -157,6 +171,10 @@ struct Settings {
     let bodies: BodySettings?
     /// Which URLs `bodies` covers; nil is all of them.
     let bodyURLs: TracingOrigins?
+    /// `captureHeaders`: the extra secret names, or nil when headers aren't recorded.
+    var headerRedact: [String]? = []
+    /// `ignoreCrashTypes`: exception names another layer already reported.
+    var ignoreCrashTypes: [String] = []
 
     static func resolve(_ options: ZharpOptions, bundle: Bundle = .main) -> Settings? {
         let key = options.key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -197,7 +215,9 @@ struct Settings {
                 BodySettings(mode: $0.mode == .all ? .all : .errors, maxSize: $0.maxSize,
                              redactKeys: $0.redactKeys, redactPatterns: $0.redactKeyPatterns)
             },
-            bodyURLs: options.captureBodies?.urls.map { TracingOrigins($0) }
+            bodyURLs: options.captureBodies?.urls.map { TracingOrigins($0) },
+            headerRedact: options.captureHeaders ? options.redactHeaders : nil,
+            ignoreCrashTypes: options.ignoreCrashTypes
         )
     }
 }

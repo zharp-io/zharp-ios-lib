@@ -176,7 +176,7 @@ final class ZharpRuntime: @unchecked Sendable {
 
         if settings.captureCrashes {
             reportPendingCrash(previousRun: previousRun)
-            if environment.installsHooks { CrashReporter.install(directory: crashDirectory) }
+            if environment.installsHooks { CrashReporter.install(directory: crashDirectory, ignoring: settings.ignoreCrashTypes) }
         }
         if environment.installsHooks {
             AppLifecycle.install(runtime: self)

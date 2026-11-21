@@ -23,7 +23,9 @@ let package = Package(
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", exact: "2.6.0"),
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift.git", exact: "2.6.0"),
         // Already in the graph through OpenTelemetry Swift; named here for ZharpLogging.
-        .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
+        // Below 1.17: from 1.17 swift-log needs a newer compiler than Xcode 26.0–26.2 have, while
+        // declaring tools 6.2, so those Xcodes pick it and then can't build it.
+        .package(url: "https://github.com/apple/swift-log.git", "1.5.0"..<"1.17.0"),
     ],
     targets: [
         .target(

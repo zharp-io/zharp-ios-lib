@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 — 2026-11-21
+
+- Request and response headers on URLSession spans (`captureHeaders`, `redactHeaders`); secrets are sent as `[Filtered]`.
+- `ignoreCrashTypes`: skip crashes another layer already reported (React Native uses it).
+- swift-log is kept below 1.17, which Xcode 26.0–26.2 can't build.
+
 ## 0.3.0 — 2026-11-17
 
 - `options.logs` (default **off**): the switch for sending the app's own logs. Off, nothing it
