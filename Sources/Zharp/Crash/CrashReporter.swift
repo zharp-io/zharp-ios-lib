@@ -25,12 +25,15 @@ enum CrashReporter {
     private static var installed = false
     private static var images: [BinaryImage] = []
     private static var exceptionURL: URL?
+    /// `ignoreCrashTypes`: exception names (or their beginnings) another layer already reported.
+    private(set) static var ignoredExceptionPrefixes: [String] = []
 
-    static func install(directory: URL) {
+    static func install(directory: URL, ignoring: [String] = []) {
         lock.lock()
         defer { lock.unlock() }
         guard !installed else { return }
         installed = true
+        ignoredExceptionPrefixes = ignoring.filter { !$0.isEmpty }
 
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         images = BinaryImages.loaded()
@@ -44,9 +47,15 @@ enum CrashReporter {
         NSSetUncaughtExceptionHandler(zharpUncaughtExceptionHandler)
     }
 
+    /// Whether another layer already reported this exception (React Native's RCTFatalException,
+    /// raised for a fatal JS error @zharp/react-native has saved as the JS error it is).
+    static func isIgnored(_ name: String) -> Bool {
+        ignoredExceptionPrefixes.contains { name.hasPrefix($0) }
+    }
+
     /// Called from the uncaught-exception handler.
     fileprivate static func writeExceptionReport(_ exception: NSException) {
-        guard let url = exceptionURL else { return }
+        guard let url = exceptionURL, !isIgnored(exception.name.rawValue) else { return }
         let type = exception.name.rawValue
         let message = exception.reason ?? ""
         let addresses = exception.callStackReturnAddresses.map { $0.uint64Value }

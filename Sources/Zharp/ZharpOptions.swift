@@ -43,6 +43,11 @@ public final class ZharpOptions {
     /// included). A crash is saved on the device and sent the next time the app starts.
     public var captureCrashes = true
 
+    /// Exception names (or their beginnings) not reported as crashes, because another layer already
+    /// reported them — e.g. React Native's `RCTFatalException`, raised for a fatal JS error that
+    /// @zharp/react-native reports as the JavaScript error it is.
+    public var ignoreCrashTypes: [String] = []
+
     /// Report when the main thread is blocked for `hangThreshold` seconds or more.
     public var detectHangs = true
     public var hangThreshold: TimeInterval = 2
@@ -168,6 +173,8 @@ struct Settings {
     let bodyURLs: TracingOrigins?
     /// `captureHeaders`: the extra secret names, or nil when headers aren't recorded.
     var headerRedact: [String]? = []
+    /// `ignoreCrashTypes`: exception names another layer already reported.
+    var ignoreCrashTypes: [String] = []
 
     static func resolve(_ options: ZharpOptions, bundle: Bundle = .main) -> Settings? {
         let key = options.key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -209,7 +216,8 @@ struct Settings {
                              redactKeys: $0.redactKeys, redactPatterns: $0.redactKeyPatterns)
             },
             bodyURLs: options.captureBodies?.urls.map { TracingOrigins($0) },
-            headerRedact: options.captureHeaders ? options.redactHeaders : nil
+            headerRedact: options.captureHeaders ? options.redactHeaders : nil,
+            ignoreCrashTypes: options.ignoreCrashTypes
         )
     }
 }
