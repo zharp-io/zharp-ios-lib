@@ -51,6 +51,38 @@ private final class BackgroundTask: @unchecked Sendable {
     }
 }
 
+#elseif canImport(AppKit)
+import AppKit
+
+/// On the Mac an inactive app keeps running, so leaving it only times the session and sends what
+/// is waiting; on quit, what is waiting is sent before the process ends.
+enum AppLifecycle {
+    private static var observers: [NSObjectProtocol] = []
+
+    static func install(runtime: ZharpRuntime) {
+        guard observers.isEmpty else { return }
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: NSApplication.didResignActiveNotification,
+                                            object: nil, queue: nil) { [weak runtime] _ in
+            guard let runtime = runtime else { return }
+            runtime.didEnterBackground()
+            if runtime.settings.flushOnBackground { runtime.flush(timeout: 10) }
+        })
+        observers.append(center.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                                            object: nil, queue: nil) { [weak runtime] _ in
+            runtime?.willEnterForeground()
+        })
+        observers.append(center.addObserver(forName: NSApplication.willTerminateNotification,
+                                            object: nil, queue: nil) { [weak runtime] _ in
+            guard let runtime = runtime else { return }
+            // The process ends as soon as this returns: wait, briefly, for the send.
+            let sent = DispatchSemaphore(value: 0)
+            runtime.flush(timeout: 2) { sent.signal() }
+            _ = sent.wait(timeout: .now() + 3)
+        })
+    }
+}
+
 #else
 
 enum AppLifecycle {

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- macOS apps: sessions end when the app stops being the active app, and what is waiting is sent when it quits (AppKit lifecycle). Checked end to end in a real AppKit app on CI (crash sent on relaunch, error and logs sent on quit).
+
 ## 0.4.0 — 2026-11-21
 
 - Request and response headers on URLSession spans (`captureHeaders`, `redactHeaders`); secrets are sent as `[Filtered]`.

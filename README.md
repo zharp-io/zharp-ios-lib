@@ -181,6 +181,23 @@ Uncaught Objective-C exceptions come with their name, reason and symbolicated ca
 Turn it off with `options.captureCrashes = false`. While Xcode's debugger is attached it catches
 crashes before Zharp does; to try it, launch the app from the home screen.
 
+## macOS
+
+The same package runs in Mac apps (macOS 12 or later), with the same `Zharp.start`. Crashes are
+caught and sent on the next launch, as on iOS; sessions end when the app stops being the active
+app; and what is waiting is sent when the app quits. Upload the app's dSYMs the same way (the Run
+Script build phase above). Screens are not tracked automatically on AppKit: call
+`Zharp.trackScreen(_:)` when one appears.
+
+AppKit catches exceptions thrown on the main thread and keeps the app running, so they never become
+crashes. To have them reported (and the app stopped, as Apple recommends), turn that off in the
+app's Info.plist:
+
+```xml
+<key>NSApplicationCrashOnExceptions</key>
+<true/>
+```
+
 ## Errors you catch
 
 ```swift
