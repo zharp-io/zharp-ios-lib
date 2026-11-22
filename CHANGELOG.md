@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 — 2026-11-22
 
 - macOS apps: sessions end when the app stops being the active app, and what is waiting is sent when it quits (AppKit lifecycle). Checked end to end in a real AppKit app on CI (crash sent on relaunch, error and logs sent on quit).
 

@@ -2,7 +2,7 @@ import Foundation
 
 /// The SDK's version, sent as `telemetry.sdk.version`. Bump it with each release tag.
 public enum ZharpVersion {
-    public static let current = "0.4.0"
+    public static let current = "0.4.1"
 }
 
 /// The two OTLP signals the SDK sends, and the path each goes to under the endpoint.
