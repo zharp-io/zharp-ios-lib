@@ -1,0 +1,61 @@
+name: macOS end to end
+
+# A real AppKit app (Examples/MacE2E) against a stand-in OTLP endpoint: a crash is sent on the next
+# launch, and what is waiting when the app quits is sent before it exits.
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/macos]
+
+jobs:
+  e2e:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The example depends on this package by path: SwiftPM names it after the folder.
+          path: zharp-ios-sdk
+
+      - name: Use the newest Xcode on the runner
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+
+      - name: Build the app
+        working-directory: zharp-ios-sdk/Examples/MacE2E
+        run: swift build -c release
+
+      - name: Start the stand-in endpoint
+        working-directory: zharp-ios-sdk/Examples/MacE2E
+        run: |
+          python3 mock_otlp.py "$RUNNER_TEMP/bodies" > "$RUNNER_TEMP/mock.log" 2>&1 &
+          sleep 2
+
+      - name: A handled error, then quit straight away
+        working-directory: zharp-ios-sdk/Examples/MacE2E
+        env:
+          ZHARP_ENDPOINT: http://127.0.0.1:4318/otlp
+        run: |
+          .build/release/MacE2E error
+          cat "$RUNNER_TEMP/mock.log"
+          grep -rlaq "mac e2e handled error" "$RUNNER_TEMP/bodies" || { echo "::error::the error was not sent before quitting"; exit 1; }
+          grep -rlaq "mac e2e quitting" "$RUNNER_TEMP/bodies" || { echo "::error::the log was not sent before quitting"; exit 1; }
+          grep -rlaq "macOS" "$RUNNER_TEMP/bodies" || { echo "::error::os.name macOS missing"; exit 1; }
+          echo "error and log sent on quit"
+
+      - name: Crash, then relaunch
+        working-directory: zharp-ios-sdk/Examples/MacE2E
+        env:
+          ZHARP_ENDPOINT: http://127.0.0.1:4318/otlp
+        run: |
+          rm -rf "$RUNNER_TEMP/bodies"/*
+          if .build/release/MacE2E crash; then echo "::error::the app did not crash"; exit 1; fi
+          .build/release/MacE2E relaunch
+          cat "$RUNNER_TEMP/mock.log"
+          grep -rlaq "EXC_BREAKPOINT\|SIGTRAP" "$RUNNER_TEMP/bodies" || { echo "::error::the crash was not sent on relaunch"; exit 1; }
+          for f in "$RUNNER_TEMP/bodies"/*; do strings "$f" | grep -E "EXC_|SIGTRAP|main\.swift|MacE2E" | head -20; done
+          echo "crash sent on relaunch"
+
+      - name: What was sent
+        if: always()
+        run: |
+          ls -la "$RUNNER_TEMP/bodies" || true
+          for f in "$RUNNER_TEMP/bodies"/*; do echo "== $f"; strings "$f" | head -60; done
