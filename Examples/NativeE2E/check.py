@@ -28,13 +28,15 @@ print(f"message found: {want_message}")
 frames = re.findall(r"^\d+\s+NativeE2E\s+0x([0-9a-f]{16}) 0x([0-9a-f]+) \+ \d+", text, re.M)
 if not frames:
     sys.exit("::error::no NativeE2E frames in the report")
-arch = subprocess.run(["lipo", "-archs", dwarf], capture_output=True, text=True).stdout.split()[0]
 uuids = subprocess.run(["dwarfdump", "--uuid", dwarf], capture_output=True, text=True).stdout
 print(uuids.strip())
-uuid = re.search(r"UUID: ([0-9A-F-]+) \(" + arch, uuids).group(1)
-if uuid.lower() not in text.lower():
-    sys.exit(f"::error::the report's binary images don't name the dSYM's UUID {uuid}")
-print(f"binary image UUID matches the dSYM: {uuid}")
+# The dSYM is universal (the simulator build has x86_64 and arm64): the slice that ran is the one
+# whose UUID the report names.
+found = [(u, a) for u, a in re.findall(r"UUID: ([0-9A-F-]+) \((\w+)\)", uuids) if u.lower() in text.lower()]
+if not found:
+    sys.exit("::error::the report's binary images don't name any of the dSYM's UUIDs")
+uuid, arch = found[0]
+print(f"binary image UUID matches the dSYM's {arch} slice: {uuid}")
 lines = []
 for address, load in frames:
     out = subprocess.run(["atos", "-arch", arch, "-o", dwarf, "-l", "0x" + load, "0x" + address], capture_output=True, text=True).stdout.strip()
