@@ -55,11 +55,13 @@ jobs:
 
       - name: C — a null pointer write, then relaunch
         working-directory: zharp-ios-sdk/Examples/NativeE2E
-        run: ./run-crash.sh segv EXC_BAD_ACCESS "SIGSEGV" apply_discount orders.c
+        run: |
+          ./run-crash.sh segv EXC_BAD_ACCESS "SIGSEGV" apply_discount orders.c
 
       - name: C++ — an uncaught std::runtime_error, then relaunch
         working-directory: zharp-ios-sdk/Examples/NativeE2E
-        run: ./run-crash.sh cxx std::runtime_error 'Price is not a number: \"twelve\"' shop::parse_price cart.cpp
+        run: |
+          ./run-crash.sh cxx std::runtime_error 'Price is not a number: "twelve"' shop::parse_price cart.cpp
 
       - name: The CLI's dSYM upload takes the C and C++ sources along (dry run)
         working-directory: zharp-ios-sdk/Examples/NativeE2E
