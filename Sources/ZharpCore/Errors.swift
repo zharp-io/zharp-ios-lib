@@ -241,15 +241,37 @@ public enum CrashFormat {
 
     /// The crash as an error: type from the signal, message saying what it means, and the
     /// crashed thread's frames plus the binary images they are in.
-    public static func describe(_ report: SignalCrashReport) -> ErrorDescription {
-        let type = exceptionType(signal: report.signal)
-        let message = signalMessage(report.signal)
+    public static func describe(_ report: SignalCrashReport, cxxException: CxxException? = nil) -> ErrorDescription {
+        // An uncaught C++ exception ends in abort(): named as the exception, not the SIGABRT.
+        let cxx = report.signal == SIGABRT ? cxxException : nil
+        let type = cxx?.type ?? exceptionType(signal: report.signal)
+        let message = cxx.map { $0.message } ?? signalMessage(report.signal)
         let addresses = crashedThreadAddresses(report)
         var text = stacktrace(type: type, message: message, addresses: addresses, images: report.images)
         let used = usedImages(addresses: addresses, images: report.images)
         let section = binaryImagesSection(used)
         if !section.isEmpty { text += "\n\n" + section }
         return ErrorDescription(type: type, message: message, stacktrace: text, images: used)
+    }
+
+    /// An uncaught C++ exception, as the terminate handler wrote it: "<type>\n<what()>".
+    public struct CxxException: Equatable {
+        public var type: String
+        public var message: String
+        public init(type: String, message: String) {
+            self.type = type
+            self.message = message
+        }
+    }
+
+    public static func parseCxxException(_ text: String) -> CxxException? {
+        guard let newline = text.firstIndex(of: "\n") else {
+            let type = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return type.isEmpty ? nil : CxxException(type: type, message: "")
+        }
+        let type = text[..<newline].trimmingCharacters(in: .whitespaces)
+        guard !type.isEmpty else { return nil }
+        return CxxException(type: type, message: String(text[text.index(after: newline)...]))
     }
 
     /// The crashed thread's frames, innermost first: the faulting instruction, then the callers.

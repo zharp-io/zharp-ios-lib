@@ -1,0 +1,74 @@
+name: Native crashes end to end
+
+# An iOS app with C and C++ (Examples/NativeE2E), in the simulator, against a stand-in OTLP
+# endpoint: a null pointer write in C and an uncaught std::runtime_error, each reported on the next
+# launch; the reported frames are symbolicated with the build's dSYM (atos, as the backend does).
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/native-crashes]
+
+jobs:
+  e2e:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The example depends on this package by path: SwiftPM names it after the folder.
+          path: zharp-ios-sdk
+
+      - name: Use the newest Xcode on the runner
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+
+      - name: Unit tests (the package builds with its C++ target)
+        working-directory: zharp-ios-sdk
+        run: swift test 2>&1 | tail -25
+
+      - name: Generate the Xcode project
+        working-directory: zharp-ios-sdk/Examples/NativeE2E
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build for the simulator (Release, with a dSYM)
+        working-directory: zharp-ios-sdk/Examples/NativeE2E
+        run: |
+          xcodebuild build -project NativeE2E.xcodeproj -scheme NativeE2E -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
+            -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO | tail -5
+          ls build/Build/Products/Release-iphonesimulator
+
+      - name: Boot a simulator and install
+        working-directory: zharp-ios-sdk/Examples/NativeE2E
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k in sorted(d, reverse=True) if 'iOS' in k for x in d[k] if x['name'].startswith('iPhone')))")
+          echo "UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid"
+          xcrun simctl install "$udid" build/Build/Products/Release-iphonesimulator/NativeE2E.app
+
+      - name: Start the stand-in endpoint
+        working-directory: zharp-ios-sdk/Examples/NativeE2E
+        run: |
+          python3 mock_otlp.py "$RUNNER_TEMP/bodies" > "$RUNNER_TEMP/mock.log" 2>&1 &
+          sleep 2
+
+      - name: C — a null pointer write, then relaunch
+        working-directory: zharp-ios-sdk/Examples/NativeE2E
+        run: ./run-crash.sh segv EXC_BAD_ACCESS "SIGSEGV" apply_discount orders.c
+
+      - name: C++ — an uncaught std::runtime_error, then relaunch
+        working-directory: zharp-ios-sdk/Examples/NativeE2E
+        run: ./run-crash.sh cxx std::runtime_error 'Price is not a number: \"twelve\"' shop::parse_price cart.cpp
+
+      - name: The CLI's dSYM upload takes the C and C++ sources along (dry run)
+        working-directory: zharp-ios-sdk/Examples/NativeE2E
+        run: |
+          npx --yes @zharp/cli dsym upload build/Build/Products/Release-iphonesimulator/NativeE2E.app.dSYM --app 1 --auth-token zh_dry --dry-run --sources . 2>&1 | tee "$RUNNER_TEMP/dsym.log"
+          grep -q "With the app's sources" "$RUNNER_TEMP/dsym.log" || echo "::warning::the published CLI didn't list sources for the dSYM"
+
+      - name: What was sent
+        if: always()
+        run: |
+          cat "$RUNNER_TEMP/mock.log" || true
+          for f in "$RUNNER_TEMP"/bodies*/*; do echo "== $f"; strings "$f" | grep -E "EXC_|SIG|std::|NativeE2E|Price" | head -40; done

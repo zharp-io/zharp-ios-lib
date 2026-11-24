@@ -2,7 +2,8 @@
 //
 // Zharp for iOS. The `Zharp` library is what apps add; `ZharpCore` is its plain-Swift logic
 // (attribute mapping, sessions, propagation headers, sampling, retry, crash report formatting)
-// with no dependencies, kept apart so it can be tested on its own.
+// with no dependencies, kept apart so it can be tested on its own. `ZharpCxx` is a few lines of
+// C++ for apps with C++ in them: an uncaught C++ exception's type and message in its crash report.
 //
 // OpenTelemetry Swift 2.x requires Swift 6 tools to build, so Xcode 16 or later.
 
@@ -32,10 +33,16 @@ let package = Package(
             name: "ZharpCore",
             path: "Sources/ZharpCore"
         ),
+        // Uncaught C++ exceptions' type and what() for crash reports (a std::terminate handler).
+        .target(
+            name: "ZharpCxx",
+            path: "Sources/ZharpCxx"
+        ),
         .target(
             name: "Zharp",
             dependencies: [
                 "ZharpCore",
+                "ZharpCxx",
                 .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
                 .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
                 .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
