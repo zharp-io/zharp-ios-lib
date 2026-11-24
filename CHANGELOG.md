@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 — 2026-11-24
+
+- Apps with C and C++ code: an uncaught C++ exception is reported by its type and `what()`, its stack starting where it was thrown (a `std::terminate` handler in the new `ZharpCxx` target, which `Zharp` links). C and C++ crashes are symbolicated with the uploaded dSYM (`zharp dsym upload`); checked end to end in an iOS app in the simulator on CI.
+
 ## 0.4.1 — 2026-11-22
 
 - macOS apps: sessions end when the app stops being the active app, and what is waiting is sent when it quits (AppKit lifecycle). Checked end to end in a real AppKit app on CI (crash sent on relaunch, error and logs sent on quit).
