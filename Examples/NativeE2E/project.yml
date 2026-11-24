@@ -1,0 +1,27 @@
+# An iOS app with C and C++ in it, for checking native crashes end to end in the simulator
+# (.github/workflows/native-e2e.yml). `xcodegen generate` makes NativeE2E.xcodeproj.
+name: NativeE2E
+options:
+  bundleIdPrefix: io.zharp.e2e
+  deploymentTarget:
+    iOS: "15.0"
+packages:
+  Zharp:
+    path: ../..
+targets:
+  NativeE2E:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    dependencies:
+      - package: Zharp
+        product: Zharp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.zharp.e2e.native
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/NativeE2E-Bridging-Header.h
+        CLANG_CXX_LANGUAGE_STANDARD: c++17
+        DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+        CODE_SIGNING_ALLOWED: NO

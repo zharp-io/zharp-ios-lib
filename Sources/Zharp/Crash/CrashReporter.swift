@@ -1,5 +1,6 @@
 import Foundation
 import ZharpCore
+import ZharpCxx
 
 #if canImport(Darwin)
 import Darwin
@@ -15,11 +16,16 @@ import Darwin
 ///   faulting address and `backtrace()` addresses as numbers with `write()`, followed by the
 ///   image list prepared at start; the next launch turns that into frames and Binary Images.
 ///
+/// - Uncaught C++ exceptions: a `std::terminate` handler (ZharpCxx) writes the exception's type and
+///   `what()`; the SIGABRT that follows is reported as that exception, with the throw site's frames
+///   (libc++abi calls terminate before unwinding anything).
+///
 /// Handlers that were installed before Zharp (another crash reporter) are called afterwards, and
 /// the app then crashes exactly as it would have.
 enum CrashReporter {
     static let signalFileName = "crash-signal.txt"
     static let exceptionFileName = "crash-exception.json"
+    static let cxxFileName = "crash-cxx.txt"
 
     private static let lock = NSLock()
     private static var installed = false
@@ -42,6 +48,7 @@ enum CrashReporter {
         let imageList = images.map(CrashFormat.imageLine).joined(separator: "\n") + "\n"
         let signalPath = directory.appendingPathComponent(signalFileName).path
         SignalHandler.install(reportPath: signalPath, imageList: imageList)
+        zharp_cxx_install_terminate_handler(directory.appendingPathComponent(cxxFileName).path)
 
         previousExceptionHandler = NSGetUncaughtExceptionHandler()
         NSSetUncaughtExceptionHandler(zharpUncaughtExceptionHandler)
@@ -85,7 +92,8 @@ enum CrashReporter {
     static func pending(in directory: URL) -> PendingCrash? {
         let exceptionFile = directory.appendingPathComponent(exceptionFileName)
         let signalFile = directory.appendingPathComponent(signalFileName)
-        let files = [exceptionFile, signalFile].filter { FileManager.default.fileExists(atPath: $0.path) }
+        let cxxFile = directory.appendingPathComponent(cxxFileName)
+        let files = [exceptionFile, signalFile, cxxFile].filter { FileManager.default.fileExists(atPath: $0.path) }
         guard !files.isEmpty else { return nil }
 
         if let data = try? Data(contentsOf: exceptionFile),
@@ -98,7 +106,8 @@ enum CrashReporter {
            let text = String(data: data, encoding: .utf8),
            let report = CrashFormat.parseSignalReport(text) {
             let time = report.time > 0 ? Date(timeIntervalSince1970: report.time) : Date()
-            return PendingCrash(error: CrashFormat.describe(report), time: time, files: files)
+            let cxx = (try? String(contentsOf: cxxFile, encoding: .utf8)).flatMap(CrashFormat.parseCxxException)
+            return PendingCrash(error: CrashFormat.describe(report, cxxException: cxx), time: time, files: files)
         }
         // Unreadable (e.g. cut short): nothing to report, but don't keep it around.
         remove(files)

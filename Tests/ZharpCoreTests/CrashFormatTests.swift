@@ -73,6 +73,25 @@ final class CrashFormatTests: XCTestCase {
         XCTAssertEqual(error.images, [app, uikit])
     }
 
+    func testUncaughtCxxExceptionNamesTheAbort() throws {
+        let cxx = try XCTUnwrap(CrashFormat.parseCxxException("std::runtime_error\nfrom 0x190000040\nPrice is not a number: \"twelve\""))
+        XCTAssertEqual(cxx, CrashFormat.CxxException(type: "std::runtime_error", message: "Price is not a number: \"twelve\"", from: 0x1_9000_0040))
+        // abort (pc), the handler (app), libc++abi's __terminate (from), then the throw site.
+        let text = report(signal: SIGABRT, pc: 0x1_0000_2000, frames: [0x1_0000_9000, 0x1_8000_0100, 0x1_0000_4000, 0x1_9000_0040, 0x1_0000_3000])
+        let error = CrashFormat.describe(try XCTUnwrap(CrashFormat.parseSignalReport(text)), cxxException: cxx)
+        XCTAssertEqual(error.type, "std::runtime_error")
+        XCTAssertEqual(error.message, "Price is not a number: \"twelve\"")
+        XCTAssertTrue(error.stacktrace.hasPrefix("std::runtime_error: Price is not a number"), error.stacktrace)
+        // The stack starts at the throw site: abort and the terminate handler are left out.
+        XCTAssertEqual(error.stacktrace.components(separatedBy: "\n")[1], CrashFormat.frameLine(index: 0, address: 0x1_0000_3000, image: app))
+        // Only an abort is a C++ exception's; another signal keeps its own name.
+        let segv = report(signal: SIGSEGV, pc: 0x1_0000_2000, frames: [0x1_0000_9000])
+        XCTAssertEqual(CrashFormat.describe(try XCTUnwrap(CrashFormat.parseSignalReport(segv)), cxxException: cxx).type, "EXC_BAD_ACCESS")
+        XCTAssertEqual(CrashFormat.parseCxxException("MyError")?.message, "")
+        XCTAssertNil(CrashFormat.parseCxxException("\nwhat"))
+        XCTAssertEqual(CrashFormat.parseCxxException("E\nline one\nline two")?.message, "line one\nline two")
+    }
+
     func testBinaryImagesJSON() {
         let json = CrashFormat.binaryImagesJSON([app, uikit])
         XCTAssertEqual(json, #"[{"arch":"arm64","loadAddress":"0x100000000","name":"MyApp","uuid":"11111111-2222-3333-4444-555555555555"},"#
