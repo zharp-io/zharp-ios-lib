@@ -4,6 +4,8 @@
 // the exception itself: this handler writes its type and what() first.
 #include "ZharpCxx.h"
 
+#include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cxxabi.h>
@@ -27,7 +29,7 @@ void writeAll(int fd, const char *text, size_t length) {
     }
 }
 
-void writeReport() {
+void writeReport(void *from) {
     std::exception_ptr current = std::current_exception();
     if (!current || !gPath) return;
     const std::type_info *type = abi::__cxa_current_exception_type();
@@ -51,7 +53,11 @@ void writeReport() {
     int fd = open(gPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd < 0) return;
     writeAll(fd, name.data(), name.size());
-    writeAll(fd, "\n", 1);
+    // Where the terminate handler was called from (in libc++abi): the crash's frames up to it are
+    // the abort and this handler, left out of the report.
+    char line[40];
+    int length = snprintf(line, sizeof line, "\nfrom 0x%llx\n", (unsigned long long)(uintptr_t)from);
+    if (length > 0) writeAll(fd, line, (size_t)length);
     writeAll(fd, what.data(), what.size());
     close(fd);
 }
@@ -61,7 +67,7 @@ void writeReport() {
     if (!entered) {
         entered = true;
         try {
-            writeReport();
+            writeReport(__builtin_return_address(0));
         } catch (...) {
             // Never stand in the way of the crash.
         }

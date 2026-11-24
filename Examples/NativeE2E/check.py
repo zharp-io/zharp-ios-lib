@@ -38,10 +38,14 @@ if not found:
 uuid, arch = found[0]
 print(f"binary image UUID matches the dSYM's {arch} slice: {uuid}")
 lines = []
-for address, load in frames:
-    out = subprocess.run(["atos", "-arch", arch, "-o", dwarf, "-l", "0x" + load, "0x" + address], capture_output=True, text=True).stdout.strip()
+for index, (address, load) in enumerate(frames):
+    # Callers' frames are return addresses: look up the call instruction (one byte back), as the backend does.
+    lookup = int(address, 16) - (1 if index else 0)
+    out = subprocess.run(["atos", "-arch", arch, "-o", dwarf, "-l", "0x" + load, hex(lookup)], capture_output=True, text=True).stdout.strip()
     lines.append(out)
     print("  0x%s -> %s" % (address, out))
-if not any(want_function in l and want_file in l for l in lines):
+if "zharpTerminate" in lines[0] or "abort" in lines[0]:
+    sys.exit("::error::the stack starts in the crash handling, not where the exception was thrown")
+if not any(want_function in l and want_file in l and not l.endswith(":0)") for l in lines):
     sys.exit(f"::error::{want_function} in {want_file} not among the symbolicated frames")
 print(f"symbolicated: {want_function} ({want_file}:line)")

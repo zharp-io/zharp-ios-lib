@@ -246,7 +246,10 @@ public enum CrashFormat {
         let cxx = report.signal == SIGABRT ? cxxException : nil
         let type = cxx?.type ?? exceptionType(signal: report.signal)
         let message = cxx.map { $0.message } ?? signalMessage(report.signal)
-        let addresses = crashedThreadAddresses(report)
+        var addresses = crashedThreadAddresses(report)
+        if let from = cxx?.from, from != 0, let index = addresses.firstIndex(of: from), index + 1 < addresses.count {
+            addresses.removeFirst(index + 1)
+        }
         var text = stacktrace(type: type, message: message, addresses: addresses, images: report.images)
         let used = usedImages(addresses: addresses, images: report.images)
         let section = binaryImagesSection(used)
@@ -254,24 +257,31 @@ public enum CrashFormat {
         return ErrorDescription(type: type, message: message, stacktrace: text, images: used)
     }
 
-    /// An uncaught C++ exception, as the terminate handler wrote it: "<type>\n<what()>".
+    /// An uncaught C++ exception, as the terminate handler wrote it:
+    /// "<type>\nfrom 0x<where the handler was called from>\n<what()>".
     public struct CxxException: Equatable {
         public var type: String
         public var message: String
-        public init(type: String, message: String) {
+        /// The return address into libc++abi the handler was called with: the crash's frames up
+        /// to it (abort, the handler) are dropped, so the stack starts where it was thrown.
+        public var from: UInt64
+        public init(type: String, message: String, from: UInt64 = 0) {
             self.type = type
             self.message = message
+            self.from = from
         }
     }
 
     public static func parseCxxException(_ text: String) -> CxxException? {
-        guard let newline = text.firstIndex(of: "\n") else {
-            let type = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return type.isEmpty ? nil : CxxException(type: type, message: "")
-        }
-        let type = text[..<newline].trimmingCharacters(in: .whitespaces)
+        var lines = text.components(separatedBy: "\n")
+        let type = lines.removeFirst().trimmingCharacters(in: .whitespaces)
         guard !type.isEmpty else { return nil }
-        return CxxException(type: type, message: String(text[text.index(after: newline)...]))
+        var from: UInt64 = 0
+        if let first = lines.first, first.hasPrefix("from ") {
+            from = hexValue(Substring(first.dropFirst(5))) ?? 0
+            lines.removeFirst()
+        }
+        return CxxException(type: type, message: lines.joined(separator: "\n"), from: from)
     }
 
     /// The crashed thread's frames, innermost first: the faulting instruction, then the callers.

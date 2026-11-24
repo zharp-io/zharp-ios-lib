@@ -65,8 +65,10 @@ jobs:
 
       - name: The CLI's dSYM upload takes the C and C++ sources along (dry run)
         working-directory: zharp-ios-sdk/Examples/NativeE2E
+        env:
+          ZHARP_AUTH_TOKEN: zh_dry_run
         run: |
-          npx --yes @zharp/cli dsym upload build/Build/Products/Release-iphonesimulator/NativeE2E.app.dSYM --app 1 --auth-token zh_dry --dry-run --sources . 2>&1 | tee "$RUNNER_TEMP/dsym.log"
+          npx --yes @zharp/cli dsym upload build/Build/Products/Release-iphonesimulator/NativeE2E.app.dSYM --app 1 --dry-run --sources . 2>&1 | tee "$RUNNER_TEMP/dsym.log"
           grep -q "With the app's sources" "$RUNNER_TEMP/dsym.log" || echo "::warning::the published CLI didn't list sources for the dSYM"
 
       - name: What was sent
