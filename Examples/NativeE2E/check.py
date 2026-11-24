@@ -46,6 +46,9 @@ for index, (address, load) in enumerate(frames):
     print("  0x%s -> %s" % (address, out))
 if "zharpTerminate" in lines[0] or "abort" in lines[0]:
     sys.exit("::error::the stack starts in the crash handling, not where the exception was thrown")
-if not any(want_function in l and want_file in l and not l.endswith(":0)") for l in lines):
+# The throw site itself can read line 0 in an optimized build (clang gives the call to
+# __cxa_throw no line), so the function and file are what's required there; some frame of the
+# file must still have its line.
+if not any(want_function in l and want_file in l for l in lines) or not any(re.search(re.escape(want_file) + r":[1-9]", l) for l in lines):
     sys.exit(f"::error::{want_function} in {want_file} not among the symbolicated frames")
 print(f"symbolicated: {want_function} ({want_file}:line)")
